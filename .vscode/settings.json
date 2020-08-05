@@ -1,0 +1,22 @@
+{
+  "editor.formatOnSave": false,
+  "[cpp]": {
+    "editor.quickSuggestions": true
+  },
+  "[c]": {
+    "editor.quickSuggestions": true
+  },
+"C_Cpp.intelliSenseEngineFallback": "Enabled",
+"files.associations": {
+    "freertos.h": "c",
+    "*.inc": "c",
+    "json.h": "c",
+    "esp_wifi.h": "c",
+    "jsmn.h": "c",
+    "array": "c",
+    "vector": "c",
+    "xstring": "c",
+    "xutility": "c"
+},
+"idf.portWin": "COM4"
+}

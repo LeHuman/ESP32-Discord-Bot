@@ -1,0 +1,57 @@
+menu "ESP_BOT_CONFIG"
+
+    choice WEBSOCKET_URI_SOURCE
+        prompt "Websocket URI source"
+        default WEBSOCKET_URI_FROM_STRING
+        help
+            Selects the source of the URI used in the websocket.
+
+        config WEBSOCKET_URI_FROM_STRING
+            bool "From string"
+
+        config WEBSOCKET_URI_FROM_STDIN
+            bool "From stdin"
+    endchoice
+
+    config WEBSOCKET_URI
+        string "Websocket endpoint URI"
+        depends on WEBSOCKET_URI_FROM_STRING
+        default "ws://echo.websocket.org"
+        help
+            URL of websocket endpoint
+
+    config WEBSOCKET_TIMEOUT_SEC
+        int "Websocket no data timeout"
+        default 10
+        help
+            The time it takes for the websocket to timeout when it is not receiving data
+
+    config ESP_WIFI_SSID
+        string "WiFi SSID"
+        default "Riveria-Network"
+        help
+            SSID (network name) for the station to connect to.
+
+    config ESP_WIFI_PASSWORD
+        string "WiFi Password"
+        default "FZvfm^##A!*g4fWB"
+        help
+            WiFi password (WPA or WPA2) for the station to use.
+
+    config ESP_MAXIMUM_RETRY
+        int "Maximum retry"
+        default 5
+        help
+            Set the Maximum retry to avoid station reconnecting to the AP unlimited when the AP is really inexistent.
+
+    config BLINK_GPIO
+        int "Blink GPIO number"
+        range 0 34
+        default 2
+        help
+            GPIO number (IOxx) to blink on and off.
+
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
+
+            GPIOs 35-39 are input-only so cannot be used as outputs.
+endmenu
