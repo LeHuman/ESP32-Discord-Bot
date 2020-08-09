@@ -6,6 +6,12 @@ menu "ESP_BOT_CONFIG"
         help
             Your discord bot token goes here
 
+    config WEBSOCKET_BUFFER_SIZE
+        int "Websocket buffer size"
+        default 8192
+        help
+            Maximum size of the websocket message
+
     config WEBSOCKET_URI
         string "Websocket endpoint URI"
         default "wss://gateway.discord.gg/?v=6&encoding=json"

@@ -52,7 +52,15 @@
     "*.rh": "c",
     "*.ipp": "c",
     "sdkconfig.h": "c",
-    "ios": "c"
+    "ios": "c",
+    "event_groups.h": "c"
 },
-"idf.portWin": "COM4"
+"idf.portWin": "COM4",
+"cSpell.words": [
+    "LOGD",
+    "LOGI",
+    "LOGW",
+    "jsmn",
+    "jsmntok"
+]
 }

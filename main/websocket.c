@@ -26,11 +26,11 @@ static const char *BOT_TAG = "Bot";
 static const char *JSM_TAG = "JSMN";
 static const char *LOGINSTR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP32\",\"$device\":\"ESP32\"}}}";
 
-// static TimerHandle_t shutdown_signal_timer;
 static SemaphoreHandle_t shutdown_sema;
 static esp_websocket_client_handle_t client;
 jsmn_parser parser;
 jsmntok_t tkns[256];
+
 /*
     Reconnecting should attempt to resume the session
     Resetting should attempt to reidentify and start new session
@@ -52,11 +52,6 @@ static void init_session() {
     session.ACK = false;
 }
 
-static void shutdown_signaler(TimerHandle_t xTimer) {
-    ESP_LOGI(WS_TAG, "No data received for %d seconds, signaling shutdown", NO_DATA_TIMEOUT_SEC);
-    xSemaphoreGive(shutdown_sema);
-}
-
 static void heartbeat(TimerHandle_t xTimer) {
     if (!session.ACK) { // confirmation of heartbeat was not received in time
         ESP_LOGE(PM_TAG, "Did not receive heartbeat confirmation in time, reconnecting");
@@ -64,8 +59,8 @@ static void heartbeat(TimerHandle_t xTimer) {
         ESP_LOGD(PM_TAG, "ba");
         session.ACK = false; // Expecting ACK to return and set to true before next heartbeat
     }
-    xTimerChangePeriod(session.pacemaker, pdMS_TO_TICKS(session.heartbeat_int), 0); // ensure pacemaker is up to date
-    xTimerReset(session.pacemaker, 0);                                              // Make callback reset the pacemaker
+    xTimerChangePeriod(session.pacemaker, pdMS_TO_TICKS(session.heartbeat_int),0); // ensure pacemaker is up to date
+    xTimerReset(session.pacemaker,0);                                              // Make callback reset the pacemaker
 }
 
 static void start_pacemaker() {
@@ -83,7 +78,7 @@ static void set_heartbeat_int(int beat) {
     }
 }
 
-static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
+static int json_equal(const char *json, jsmntok_t *tok, const char *s) {
     if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start && strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
         return 0;
     }
@@ -135,7 +130,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
         }
 
         for (size_t i = 1; i < r; i++) {
-            if (jsoneq(data->data_ptr, &tkns[i], "op") == 0) {
+            if (json_equal(data->data_ptr, &tkns[i], "op") == 0) {
                 int op = atoi((char *)(data->data_ptr + tkns[i + 1].start));
                 session.lastOP = op;
                 switch (op) {
@@ -167,7 +162,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                     break;
                 }
                 i++;
-            } else if (jsoneq(data->data_ptr, &tkns[i], "d") == 0) {
+            } else if (json_equal(data->data_ptr, &tkns[i], "d") == 0) {
                 int j;
                 ESP_LOGD(BOT_TAG, "Reading packet data");
                 if (tkns[i + 1].type != JSMN_OBJECT) {
@@ -175,7 +170,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                 }
                 for (j = 0; j < tkns[i + 1].size; j++) {
                     int k = i + j + 2;
-                    if (jsoneq(data->data_ptr, &tkns[k], "heartbeat_interval") == 0) {
+                    if (json_equal(data->data_ptr, &tkns[k], "heartbeat_interval") == 0) {
                         int beat = atoi((char *)(data->data_ptr + tkns[k + 1].start));
                         set_heartbeat_int(beat);
                         j++; // Skip token that we just read
@@ -190,7 +185,6 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
         }
 
     CLEAN:
-        // xTimerReset(shutdown_signal_timer, portMAX_DELAY);
         break;
     case WEBSOCKET_EVENT_ERROR:
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_ERROR");
@@ -203,9 +197,8 @@ static void websocket_app_start(void) {
     websocket_cfg.disable_auto_reconnect = true; // Must implement this with discord API
     websocket_cfg.disable_pingpong_discon = true;
     websocket_cfg.uri = CONFIG_WEBSOCKET_URI;
+    websocket_cfg.buffer_size = CONFIG_WEBSOCKET_BUFFER_SIZE;
 
-    // Replace with reconnect/reset script
-    // shutdown_signal_timer = xTimerCreate("Websocket shutdown timer", NO_DATA_TIMEOUT_SEC * 1000 / portTICK_PERIOD_MS, pdFALSE, NULL, shutdown_signaler);
     shutdown_sema = xSemaphoreCreateBinary();
 
     ESP_LOGI(WS_TAG, "Connecting to %s...", websocket_cfg.uri);
@@ -214,15 +207,14 @@ static void websocket_app_start(void) {
     esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
 
     esp_websocket_client_start(client);
-    // xTimerStart(shutdown_signal_timer, portMAX_DELAY);
 }
 
-static void websocket_app_stop(void) {
-    xSemaphoreTake(shutdown_sema, portMAX_DELAY);
-    esp_websocket_client_stop(client);
-    ESP_LOGI(WS_TAG, "Websocket Stopped");
-    esp_websocket_client_destroy(client);
-}
+// static void websocket_app_stop(void) {
+//     xSemaphoreTake(shutdown_sema, portMAX_DELAY);
+//     esp_websocket_client_stop(client);
+//     ESP_LOGI(WS_TAG, "Websocket Stopped");
+//     esp_websocket_client_destroy(client);
+// }
 
 void app_main(void) {
     ESP_LOGI(WS_TAG, "Startup..");
