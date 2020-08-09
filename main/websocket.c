@@ -135,30 +135,30 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                 session.lastOP = op;
                 switch (op) {
                 case 0:
-                    ESP_LOGD(BOT_TAG, "Recieved code: Dispatch");
+                    ESP_LOGD(BOT_TAG, "Received code: Dispatch");
                     break;
                 case 1:
-                    ESP_LOGD(BOT_TAG, "Recieved code: Heartbeat");
+                    ESP_LOGD(BOT_TAG, "Received code: Heartbeat");
                     session.ACK = true; // ensure proper heartbeat
                     heartbeat(session.pacemaker);
                     break;
                 case 7:
-                    ESP_LOGD(BOT_TAG, "Recieved code: Reconnect");
+                    ESP_LOGD(BOT_TAG, "Received code: Reconnect");
                     break;
                 case 9:
-                    ESP_LOGD(BOT_TAG, "Recieved code: Invalid Session");
+                    ESP_LOGD(BOT_TAG, "Received code: Invalid Session");
                     break;
                 case 10:
-                    ESP_LOGD(BOT_TAG, "Recieved code: Hello");
+                    ESP_LOGD(BOT_TAG, "Received code: Hello");
                     doLogin();
                     break;
                 case 11:
-                    ESP_LOGD(BOT_TAG, "Recieved code: Heartbeat ACK");
+                    ESP_LOGD(BOT_TAG, "Received code: Heartbeat ACK");
                     session.ACK = true;
                     ESP_LOGD(PM_TAG, "dum");
                     break;
                 default:
-                    ESP_LOGW(BOT_TAG, "Recieved code: Unknown %d", op);
+                    ESP_LOGW(BOT_TAG, "Received code: Unknown %d", op);
                     break;
                 }
                 i++;
