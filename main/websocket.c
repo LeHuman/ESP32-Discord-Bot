@@ -56,7 +56,7 @@ struct session {
     bool ACK;
 } session;
 
-static void init_session() {
+static void BOT_init() {
     session.pacemaker_init = false;
     session.ACK = false;
     session.activeGuild = "null";
@@ -157,13 +157,6 @@ static void BOT_op_code(int op) {
     }
 }
 
-static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
-    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start && strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
-        return true;
-    }
-    return false;
-}
-
 static void BOT_send_payload(char *data) {
     if (esp_websocket_client_is_connected(client)) {
         vTaskDelay(pdMS_TO_TICKS(550)); // Wait a half second to prevent sending data too fast
@@ -177,6 +170,13 @@ static void BOT_do_login() {
     char buffer[290];
     snprintf(buffer, 290, LOGINSTR, BOT_TOKEN);
     BOT_send_payload(buffer);
+}
+
+static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
+    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start && strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+        return true;
+    }
+    return false;
 }
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
@@ -312,7 +312,7 @@ void app_main(void) {
     jsmn_init(&parser);
 
     ESP_LOGI(WS_TAG, "Initalizing Bot session");
-    init_session();
+    BOT_init();
 
     websocket_app_start();
 }
