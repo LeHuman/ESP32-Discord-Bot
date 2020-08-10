@@ -60,7 +60,8 @@
     "task.h": "c",
     "esp_timer.h": "c",
     "esp_websocket_client_mod.h": "c",
-    "esp_transport.h": "c"
+    "esp_transport.h": "c",
+    "esp_event.h": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [
