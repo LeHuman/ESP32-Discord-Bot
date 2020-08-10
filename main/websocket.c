@@ -24,80 +24,159 @@ static const char *WS_TAG = "WebSocket";
 static const char *PM_TAG = "Heart";
 static const char *BOT_TAG = "Bot";
 static const char *JSM_TAG = "JSMN";
-static const char *LOGINSTR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP32\",\"$device\":\"ESP32\"}}}";
+static const char *LOGINSTR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP32\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":false,\"intents\":512}}";
 
 static SemaphoreHandle_t shutdown_sema;
 static esp_websocket_client_handle_t client;
 jsmn_parser parser;
-jsmntok_t tkns[256];
+jsmntok_t tkns[256]; // IMPROVE: use dynamic token buffer
 
 /*
     Reconnecting should attempt to resume the session
-    Resetting should attempt to reidentify and start new session
+    Resetting should attempt to re-identify and start new session
 */
+
+enum payload_event { // What event did we receive
+    EVENT_NULL,
+    EVENT_READY,
+    EVENT_GUILD_OBJ,
+}
 
 struct session {
     TimerHandle_t pacemaker;
+    payload_event event;
     bool pacemaker_init;
     char *session_id;
     char *token;
-    int seq;
+    char *seq; // format as integer, "null" otherwise
     int heartbeat_int;
     int lastOP;
+    char *activeGuild;
+    bool ready;
     bool ACK;
 } session;
 
 static void init_session() {
     session.pacemaker_init = false;
     session.ACK = false;
+    session.activeGuild = "null";
+    session.ready = false;
+    session.seq = "null";
+    session.event = EVENT_NULL;
 }
 
-static void heartbeat(TimerHandle_t xTimer) {
+static void BOT_heartbeat(TimerHandle_t xTimer) {
     if (!session.ACK) { // confirmation of heartbeat was not received in time
-        ESP_LOGE(PM_TAG, "Did not receive heartbeat confirmation in time, reconnecting");
+        ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting");
     } else {
         ESP_LOGD(PM_TAG, "ba");
         session.ACK = false; // Expecting ACK to return and set to true before next heartbeat
+        // TODO: send heartbeat here
     }
-    xTimerChangePeriod(session.pacemaker, pdMS_TO_TICKS(session.heartbeat_int),0); // ensure pacemaker is up to date
-    xTimerReset(session.pacemaker,0);                                              // Make callback reset the pacemaker
+    xTimerChangePeriod(session.pacemaker, pdMS_TO_TICKS(session.heartbeat_int), 0); // ensure pacemaker is up to date
+    xTimerReset(session.pacemaker, 0);                                              // Make callback reset the pacemaker
 }
 
-static void start_pacemaker() {
-    ESP_LOGI(PM_TAG, "Starting Pacemaker");
-    session.pacemaker = xTimerCreate("Bot Pacemaker", pdMS_TO_TICKS(session.heartbeat_int), pdFALSE, NULL, heartbeat);
+static void BOT_start_pacemaker() {
+    ESP_LOGI(BOT_TAG, "Starting Pacemaker");
+    session.pacemaker = xTimerCreate("Bot Pacemaker", pdMS_TO_TICKS(session.heartbeat_int), pdFALSE, NULL, BOT_heartbeat);
     session.pacemaker_init = true;
 }
 
-static void set_heartbeat_int(int beat) {
-    ESP_LOGI(PM_TAG, "New Heart beat: %d", beat);
+static void BOT_set_heartbeat_int(int beat) {
+    ESP_LOGI(BOT_TAG, "New Heart beat: %d", beat);
     session.heartbeat_int = beat;
     session.ACK = true;
     if (!session.pacemaker_init) {
-        start_pacemaker();
+        BOT_start_pacemaker();
     }
 }
 
-static int json_equal(const char *json, jsmntok_t *tok, const char *s) {
+static void BOT_set_session_id(char *new_id) {
+    ESP_LOGI(BOT_TAG, "New Session ID: %s", new_id);
+    session.session_id = new_id;
+}
+
+static void BOT_set_sequence(char *new_seq) {
+    ESP_LOGI(BOT_TAG, "Sequence: %s", new_seq);
+    session.seq = new_seq;
+}
+
+static void BOT_set_event(payload_event event) {
+    session.event = event;
+}
+
+static void BOT_event(char *event) {
+    ESP_LOGI(BOT_TAG, "Message event: %s", event);
+    switch (event) {
+    case "READY":
+        BOT_set_event(EVENT_READY);
+        break;
+    case "GUILD_CREATE":
+        BOT_set_event(EVENT_GUILD_OBJ);
+        break;
+    default:
+        // ESP_LOGW(BOT_TAG, "Unknown Event: %s", event);
+        BOT_set_event(EVENT_NULL);
+        break;
+    }
+}
+
+static void BOT_op_code(int op) {
+    session.lastOP = op;
+    switch (op) {
+    case 0:
+        ESP_LOGD(BOT_TAG, "Received op code: Dispatch");
+        break;
+    case 1:
+        ESP_LOGD(BOT_TAG, "Received op code: Heartbeat");
+        session.ACK = true; // ensure proper heartbeat
+        BOT_heartbeat(session.pacemaker);
+        break;
+    case 7:
+        ESP_LOGD(BOT_TAG, "Received op code: Reconnect");
+        break;
+    case 9:
+        ESP_LOGD(BOT_TAG, "Received op code: Invalid Session");
+        break;
+    case 10:
+        ESP_LOGD(BOT_TAG, "Received op code: Hello");
+        BOT_do_login();
+        break;
+    case 11:
+        ESP_LOGD(BOT_TAG, "Received op code: Heartbeat ACK");
+        session.ACK = true;
+        ESP_LOGD(PM_TAG, "dum");
+        break;
+    case 2, 3, 4, 6, 8: // We should only be sending these op codes
+        ESP_LOGW(BOT_TAG, "Received bad op code: %d", op);
+        break;
+    default:
+        ESP_LOGW(BOT_TAG, "Received unknown op code: %d", op);
+        break;
+    }
+}
+
+static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
     if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start && strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
-        return 0;
+        return true;
     }
-    return -1;
+    return false;
 }
 
-static void sendMsg(char *data) {
+static void BOT_send_payload(char *data) {
     if (esp_websocket_client_is_connected(client)) {
+        vTaskDelay(pdMS_TO_TICKS(550)); // Wait a half second to prevent sending data too fast
         ESP_LOGI(WS_TAG, "Sending %s", data);
         esp_websocket_client_send_text(client, data, strlen(data), portMAX_DELAY);
-        vTaskDelay(1000 / portTICK_RATE_MS); // Delay a bit to prevent sending data too fast
     }
 }
 
-static void doLogin() {
+static void BOT_do_login() {
     ESP_LOGI(BOT_TAG, "Logging in...");
-    char buffer[160];
-    snprintf(buffer, 160, LOGINSTR, BOT_TOKEN);
-    sendMsg(buffer);
+    char buffer[290];
+    snprintf(buffer, 290, LOGINSTR, BOT_TOKEN);
+    BOT_send_payload(buffer);
 }
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
@@ -130,39 +209,19 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
         }
 
         for (size_t i = 1; i < r; i++) {
-            if (json_equal(data->data_ptr, &tkns[i], "op") == 0) {
+            if (json_equal(data->data_ptr, &tkns[k], "t")) { // Event name
+                char *event = (char *)(data->data_ptr + tkns[i + 1].start);
+                BOT_event(event);
+                i++;                                                // Skip token that we just read
+            } else if (json_equal(data->data_ptr, &tkns[k], "s")) { // Sequence
+                char *new_seq = (char *)(data->data_ptr + tkns[i + 1].start);
+                BOT_set_sequence(new_seq);
+                i++; // Skip token that we just read
+            } else if (json_equal(data->data_ptr, &tkns[i], "op")) {
                 int op = atoi((char *)(data->data_ptr + tkns[i + 1].start));
-                session.lastOP = op;
-                switch (op) {
-                case 0:
-                    ESP_LOGD(BOT_TAG, "Received code: Dispatch");
-                    break;
-                case 1:
-                    ESP_LOGD(BOT_TAG, "Received code: Heartbeat");
-                    session.ACK = true; // ensure proper heartbeat
-                    heartbeat(session.pacemaker);
-                    break;
-                case 7:
-                    ESP_LOGD(BOT_TAG, "Received code: Reconnect");
-                    break;
-                case 9:
-                    ESP_LOGD(BOT_TAG, "Received code: Invalid Session");
-                    break;
-                case 10:
-                    ESP_LOGD(BOT_TAG, "Received code: Hello");
-                    doLogin();
-                    break;
-                case 11:
-                    ESP_LOGD(BOT_TAG, "Received code: Heartbeat ACK");
-                    session.ACK = true;
-                    ESP_LOGD(PM_TAG, "dum");
-                    break;
-                default:
-                    ESP_LOGW(BOT_TAG, "Received code: Unknown %d", op);
-                    break;
-                }
-                i++;
-            } else if (json_equal(data->data_ptr, &tkns[i], "d") == 0) {
+                BOT_op_code(op);
+                i++; // Skip token that we just read
+            } else if (json_equal(data->data_ptr, &tkns[i], "d")) {
                 int j;
                 ESP_LOGD(BOT_TAG, "Reading packet data");
                 if (tkns[i + 1].type != JSMN_OBJECT) {
@@ -170,15 +229,31 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                 }
                 for (j = 0; j < tkns[i + 1].size; j++) {
                     int k = i + j + 2;
-                    if (json_equal(data->data_ptr, &tkns[k], "heartbeat_interval") == 0) {
-                        int beat = atoi((char *)(data->data_ptr + tkns[k + 1].start));
-                        set_heartbeat_int(beat);
-                        j++; // Skip token that we just read
-                    } else {
-                        ESP_LOGD(BOT_TAG, "Unused key: %.*s", tkns[k].end - tkns[k].start, data->data_ptr + tkns[k].start);
+                    switch (session.event) { // Depends on the message event being identified beforehand
+                    case EVENT_GUILD_OBJ:
+                        if (json_equal(data->data_ptr, &tkns[k], "name")) {
+                            char *new_id = (char *)(data->data_ptr + tkns[k + 1].start);
+                            BOT_set_session_id(new_id);
+                            j++; // Skip token that we just read
+                        }
+                        break;
+                    case EVENT_READY:
+                        if (json_equal(data->data_ptr, &tkns[k], "session_id")) {
+                            char *new_id = (char *)(data->data_ptr + tkns[k + 1].start);
+                            BOT_set_session_id(new_id);
+                            j++; // Skip token that we just read
+                        }
+                        break;
+                    default:
+                        if (json_equal(data->data_ptr, &tkns[k], "heartbeat_interval")) {
+                            int beat = atoi((char *)(data->data_ptr + tkns[k + 1].start));
+                            BOT_set_heartbeat_int(beat);
+                            j++; // Skip token that we just read
+                        }
+                        break;
                     }
                 }
-                i += tkns[i + 1].size + 1;
+                i += tkns[i + 1].size + 1; // Skip the tokens that were in the data block
             } else {
                 ESP_LOGD(BOT_TAG, "Unused key: %.*s", tkns[i].end - tkns[i].start, data->data_ptr + tkns[i].start);
             }

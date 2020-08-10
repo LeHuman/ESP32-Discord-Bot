@@ -53,7 +53,8 @@
     "*.ipp": "c",
     "sdkconfig.h": "c",
     "ios": "c",
-    "event_groups.h": "c"
+    "event_groups.h": "c",
+    "queue": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [
