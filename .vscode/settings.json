@@ -54,7 +54,13 @@
     "sdkconfig.h": "c",
     "ios": "c",
     "event_groups.h": "c",
-    "queue": "c"
+    "queue": "c",
+    "esp_websocket_client.h": "c",
+    "iosfwd": "c",
+    "task.h": "c",
+    "esp_timer.h": "c",
+    "esp_websocket_client_mod.h": "c",
+    "esp_transport.h": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [
