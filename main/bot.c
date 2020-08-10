@@ -69,13 +69,11 @@ static void BOT_init(BOT_payload_handler payload_handle) {
 
 static void BOT_set_session_id(char *new_id) {
     ESP_LOGI(BOT_TAG, "New Session ID: %s", new_id);
-    // free(BOT.session_id);
     BOT.session_id = new_id;
 }
 
 static void BOT_set_sequence(char *new_seq) {
     ESP_LOGI(BOT_TAG, "Sequence: %s", new_seq);
-    // free(BOT.seq);
     BOT.seq = new_seq;
 }
 
@@ -134,7 +132,6 @@ static void BOT_event(char *event) {
     } else {
         BOT_set_event(EVENT_NULL);
     }
-    free(event);
 }
 
 static void BOT_op_code(int op) {

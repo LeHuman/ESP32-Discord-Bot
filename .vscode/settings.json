@@ -61,7 +61,8 @@
     "esp_timer.h": "c",
     "esp_websocket_client_mod.h": "c",
     "esp_transport.h": "c",
-    "esp_event.h": "c"
+    "esp_event.h": "c",
+    "cstdlib": "cpp"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [
