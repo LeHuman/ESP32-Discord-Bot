@@ -30,8 +30,8 @@ static const char *JSM_TAG = "JSMN";
 
 jsmn_parser parser;
 jsmntok_t tkns[JSMN_TOKEN_LENGTH]; // IMPROVE: use dynamic token buffer
+static char data_ptr[WEBSOCKET_BUFFER_SIZE];
 static int data_len = 0;
-static char data_ptr[CONFIG_WEBSOCKET_BUFFER_SIZE];
 
 enum payload_event { // What event did we receive
     EVENT_NULL,
@@ -42,7 +42,7 @@ typedef enum payload_event payload_event;
 
 static QueueHandle_t BOT_message_queue;
 static QueueHandle_t BOT_message_length_queue;
-static BOT_payload_handler BOT_send_payload;
+static BOT_payload_handler BOT_payload_handle;
 
 struct BOT { // TODO: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
     TimerHandle_t pacemaker;
@@ -58,7 +58,18 @@ struct BOT { // TODO: reconnect bot every now and then to reset sequence number 
     bool ACK;
 } BOT;
 
-static void BOT_set_session_id(char *new_id) {
+// If type != 0 (Default) stop
+// If webhook_id exists stop
+// If content is empty stop
+struct BOT_Basic_Message {
+    char *channel_id;
+    char *username;
+    char *discriminator; // @User#1337 <--
+    char *message;
+}
+
+static void
+BOT_set_session_id(char *new_id) {
     ESP_LOGI(BOT_TAG, "New Session ID: %s", new_id);
     BOT.session_id = new_id;
 }
@@ -72,8 +83,9 @@ static void BOT_set_event(payload_event event) {
     BOT.event = event;
 }
 
-static void BOT_send_payload(payload_event event) {
-    BOT.event = event;
+static void BOT_send_payload(char *data) {
+    vTaskDelay(pdMS_TO_TICKS(550));
+    BOT_payload_handle(data);
 }
 
 static void BOT_heartbeat(TimerHandle_t xTimer) {
@@ -256,7 +268,6 @@ static void BOT_payload_task(void *pvParameters) {
             }
         }
     }
-
     vTaskDelete(NULL);
 }
 
@@ -267,7 +278,7 @@ static void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_q
 
     ESP_LOGI(JSM_TAG, "Initalizing Json parser");
 
-    BOT_send_payload = payload_handle;
+    BOT_payload_handle = payload_handle;
     BOT_message_queue = message_queue_handle;
     BOT_message_length_queue = message_length_queue_handle;
 
