@@ -45,9 +45,9 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_DATA");
         if (data->data_len > 0) {
             if (xQueueSendToBack(message_length_queue, &data->data_len, 0) == errQUEUE_FULL) {
-                ESP_LOGE(WS_TAG, "length queue is full? , unable to receive last message");
+                ESP_LOGE(WS_TAG, "length queue is full, unable to receive last message length");
             } else if (xQueueSendToBack(message_queue, data->data_ptr, 0) == errQUEUE_FULL) {
-                ESP_LOGE(WS_TAG, "Message queue is full, unable to receive last message");
+                ESP_LOGE(WS_TAG, "Message queue is full, unable to receive last message"); // Should never be called?
                 // TODO: remove last queued length
             }
         }
@@ -84,7 +84,6 @@ static void websocket_app_start(void) {
 
 static void websocket_data_handler(char *data) {
     if (esp_websocket_client_is_connected(client)) {
-        // vTaskDelay(pdMS_TO_TICKS(550));
         ESP_LOGI(WS_TAG, "Sending %s", data);
         esp_websocket_client_send_text(client, data, strlen(data), portMAX_DELAY);
     }
@@ -114,4 +113,6 @@ void app_main(void) {
 
     ESP_LOGI(WS_TAG, "Initalizing Websocket");
     websocket_app_start();
+
+    ESP_LOGI(WS_TAG, "Free memory: %d bytes", esp_get_free_heap_size());
 }
