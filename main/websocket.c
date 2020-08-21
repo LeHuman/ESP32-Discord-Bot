@@ -29,17 +29,6 @@ static const char *JSM_TAG = "JSMN";
 jsmn_parser parser;
 jsmntok_t tkns[128]; // IMPROVE: use dynamic token buffer
 
-// static char *json_ttoa(const char *data, jsmntok_t *tok) {
-//     // return (char *)(data->data_ptr + tkns[i + 1].start);
-//     int len = tok->end - tok->start + 1;
-//     char *str = malloc(len * sizeof(char));
-//     snprintf(str, len, (char *)(data + tok->start));
-//     // strncpy(str, data, len);
-//     // str[len - 1] = '\0';
-//     ESP_LOGI(JSM_TAG, "Parsed Token: %s", str);
-//     return str;
-// }
-
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
     esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
     switch (event_id) {
@@ -75,18 +64,21 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 
             for (size_t i = 1; i < r; i++) {
                 if (json_equal(data->data_ptr, &tkns[i], "t")) { // Event name
-                    char *event = (char *)(data->data_ptr + tkns[i + 1].start);
-                    // char *event = json_ttoa(data->data_ptr, &tkns[i + 1]);
+                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
+                    char event[len];
+                    snprintf(event, len, (char *)(data->data_ptr + tkns[i + 1].start));
                     BOT_event(event);
                     i++;                                                // Skip token that we just read
                 } else if (json_equal(data->data_ptr, &tkns[i], "s")) { // Sequence
-                    char *new_seq = (char *)(data->data_ptr + tkns[i + 1].start);
-                    // char *new_seq = json_ttoa(data->data_ptr, &tkns[i + 1]);
+                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
+                    char new_seq[len];
+                    snprintf(new_seq, len, (char *)(data->data_ptr + tkns[i + 1].start));
                     BOT_set_sequence(new_seq);
                     i++; // Skip token that we just read
                 } else if (json_equal(data->data_ptr, &tkns[i], "op")) {
-                    char *opStr = (char *)(data->data_ptr + tkns[i + 1].start);
-                    // char *opStr = json_ttoa(data->data_ptr, &tkns[i + 1]);
+                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
+                    char opStr[len];
+                    snprintf(opStr, len, (char *)(data->data_ptr + tkns[i + 1].start));
                     op_code = atoi(opStr);
                     i++; // Skip token that we just read
                 } else if (json_equal(data->data_ptr, &tkns[i], "d")) {
@@ -100,25 +92,27 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                         switch (BOT.event) { // Depends on the message event being identified beforehand
                         case EVENT_GUILD_OBJ:
                             if (json_equal(data->data_ptr, &tkns[k], "name")) {
-                                char *name = (char *)(data->data_ptr + tkns[i + 1].start);
-                                // char *name = json_ttoa(data->data_ptr, &tkns[k + 1]);
+                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                char name[len];
+                                snprintf(name, len, (char *)(data->data_ptr + tkns[k + 1].start));
                                 ESP_LOGI(BOT_TAG, "Guild name: %s", name);
-                                // BOT_set_session_id(new_id);
                                 j++; // Skip token that we just read
                             }
                             break;
                         case EVENT_READY:
                             if (json_equal(data->data_ptr, &tkns[k], "session_id")) {
-                                char *new_id = (char *)(data->data_ptr + tkns[i + 1].start);
-                                // char *new_id = json_ttoa(data->data_ptr, &tkns[k + 1]);
+                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                char new_id[len];
+                                snprintf(new_id, len, (char *)(data->data_ptr + tkns[k + 1].start));
                                 BOT_set_session_id(new_id);
                                 j++; // Skip token that we just read
                             }
                             break;
                         default:
                             if (json_equal(data->data_ptr, &tkns[k], "heartbeat_interval")) {
-                                char *beatStr = (char *)(data->data_ptr + tkns[i + 1].start);
-                                // char *beatStr = json_ttoa(data->data_ptr, &tkns[k + 1]);
+                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                char beatStr[len];
+                                snprintf(beatStr, len, (char *)(data->data_ptr + tkns[k + 1].start));
                                 int beat = atoi(beatStr);
                                 BOT_set_heartbeat_int(beat);
                                 j++; // Skip token that we just read
