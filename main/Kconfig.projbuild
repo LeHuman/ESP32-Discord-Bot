@@ -8,7 +8,7 @@ menu "ESP_BOT_CONFIG"
 
     config WEBSOCKET_BUFFER_SIZE
         int "Websocket buffer size"
-        default 8191
+        default 8192
         help
             Maximum size of the websocket message
 
