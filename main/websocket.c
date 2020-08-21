@@ -25,7 +25,6 @@
 
 static const char *WS_TAG = "WebSocket";
 
-static SemaphoreHandle_t message_sema;
 static esp_websocket_client_handle_t client;
 static QueueHandle_t message_queue;
 static QueueHandle_t message_length_queue;
@@ -45,14 +44,12 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
         blink();
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_DATA");
         if (data->data_len > 0) {
-            xSemaphoreTake(message_sema, portMAX_DELAY);
             if (xQueueSendToBack(message_length_queue, &data->data_len, 0) == errQUEUE_FULL) {
                 ESP_LOGE(WS_TAG, "length queue is full? , unable to receive last message");
             } else if (xQueueSendToBack(message_queue, data->data_ptr, 0) == errQUEUE_FULL) {
                 ESP_LOGE(WS_TAG, "Message queue is full, unable to receive last message");
                 // TODO: remove last queued length
             }
-            xSemaphoreGive(message_sema);
         }
         break;
     case WEBSOCKET_EVENT_ERROR:
@@ -112,11 +109,8 @@ void app_main(void) {
         return;
     }
 
-    message_sema = xSemaphoreCreateBinary();
-    xSemaphoreGive(message_sema);
-
     ESP_LOGI(WS_TAG, "Initalizing Bot session");
-    BOT_init(websocket_data_handler, message_queue, message_length_queue, message_sema);
+    BOT_init(websocket_data_handler, message_queue, message_length_queue);
 
     ESP_LOGI(WS_TAG, "Initalizing Websocket");
     websocket_app_start();

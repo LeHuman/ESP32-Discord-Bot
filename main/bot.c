@@ -43,7 +43,6 @@ typedef enum payload_event payload_event;
 static QueueHandle_t BOT_message_queue;
 static QueueHandle_t BOT_message_length_queue;
 static BOT_payload_handler BOT_send_payload;
-static SemaphoreHandle_t BOT_message_sema;
 
 struct BOT { // TODO: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
     TimerHandle_t pacemaker;
@@ -178,7 +177,6 @@ static void BOT_payload_task(void *pvParameters) {
         ESP_LOGI(BOT_TAG, "Waiting for queue");
         xQueueReceive(BOT_message_queue, data_ptr, portMAX_DELAY);         // Wait for new message in queue
         xQueueReceive(BOT_message_length_queue, &data_len, portMAX_DELAY); // Should not have to wait long, if at all, but here ya go ig
-        xSemaphoreTake(BOT_message_sema, portMAX_DELAY);
 
         jsmn_init(&parser); // IG we gotta reinit everytime?
         int r = jsmn_parse(&parser, data_ptr, data_len, tkns, JSMN_TOKEN_LENGTH);
@@ -257,13 +255,12 @@ static void BOT_payload_task(void *pvParameters) {
                 }
             }
         }
-        xSemaphoreGive(BOT_message_sema);
     }
 
     vTaskDelete(NULL);
 }
 
-static void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_queue_handle, QueueHandle_t message_length_queue_handle, SemaphoreHandle_t message_sema_handle) {
+static void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_queue_handle, QueueHandle_t message_length_queue_handle) {
     esp_log_level_set(BOT_TAG, ESP_LOG_DEBUG);
     esp_log_level_set(PM_TAG, ESP_LOG_DEBUG);
     esp_log_level_set(JSM_TAG, ESP_LOG_DEBUG);
@@ -273,7 +270,6 @@ static void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_q
     BOT_send_payload = payload_handle;
     BOT_message_queue = message_queue_handle;
     BOT_message_length_queue = message_length_queue_handle;
-    BOT_message_sema = message_sema_handle;
 
     BOT.pacemaker_init = false;
     BOT.ACK = false;
