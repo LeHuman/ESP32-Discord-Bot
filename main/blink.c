@@ -34,5 +34,5 @@ static void blink_task(void *pvParameters) {
 }
 
 static void start_blink_task() {
-    xTaskCreate(blink_task, "blinker", 2048, NULL, 32, NULL); // 1576 is exact number of bytes actually needed
+    xTaskCreate(blink_task, "blinker", 2048, NULL, 1, NULL); // 1576 is exact number of bytes actually needed
 }

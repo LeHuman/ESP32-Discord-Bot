@@ -63,7 +63,14 @@
     "esp_transport.h": "c",
     "esp_event.h": "c",
     "cstdlib": "cpp",
-    "system_error": "c"
+    "system_error": "c",
+    "jsmn2.h": "c",
+    "ratio": "c",
+    "tuple": "c",
+    "xtr1common": "c",
+    "jsmn-vk.h": "c",
+    "esp_log.h": "c",
+    "semphr.h": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [

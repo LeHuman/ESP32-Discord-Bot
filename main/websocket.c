@@ -6,6 +6,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
@@ -18,16 +19,16 @@
 #include "wifi_interface.c"
 
 #define NO_DATA_TIMEOUT_SEC CONFIG_WEBSOCKET_TIMEOUT_SEC
+#define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
+#define MESSAGE_LENGTH_SIZE sizeof(int)
+#define MAX_MESSAGE_QUEUE 5
 
 static const char *WS_TAG = "WebSocket";
 
-static SemaphoreHandle_t shutdown_sema;
+static SemaphoreHandle_t message_sema;
 static esp_websocket_client_handle_t client;
-
-static const char *JSM_TAG = "JSMN";
-
-jsmn_parser parser;
-jsmntok_t tkns[128]; // IMPROVE: use dynamic token buffer
+static QueueHandle_t message_queue;
+static QueueHandle_t message_length_queue;
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
     esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
@@ -43,94 +44,16 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     case WEBSOCKET_EVENT_DATA:
         blink();
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_DATA");
-        ESP_LOGD(WS_TAG, "Received=%.*s", data->data_len, (char *)data->data_ptr);
-        ESP_LOGD(WS_TAG, "OP Code=%d", data->op_code);
         if (data->data_len > 0) {
-
-            int r = jsmn_parse(&parser, data->data_ptr, data->data_len, tkns, 128);
-
-            if (r < 0) {
-                ESP_LOGE(JSM_TAG, "Failed to parse JSON: %d", r);
-                return;
+            xSemaphoreTake(message_sema, portMAX_DELAY);
+            if (xQueueSendToBack(message_length_queue, &data->data_len, 0) == errQUEUE_FULL) {
+                ESP_LOGE(WS_TAG, "length queue is full? , unable to receive last message");
+            } else if (xQueueSendToBack(message_queue, data->data_ptr, 0) == errQUEUE_FULL) {
+                ESP_LOGE(WS_TAG, "Message queue is full, unable to receive last message");
+                // TODO: remove last queued length
             }
-
-            /* Assume the top-level element is an object */
-            if (r < 1 || tkns[0].type != JSMN_OBJECT) {
-                ESP_LOGE(JSM_TAG, "Object expected in JSON");
-                return;
-            }
-
-            int op_code = -1;
-
-            for (size_t i = 1; i < r; i++) {
-                if (json_equal(data->data_ptr, &tkns[i], "t")) { // Event name
-                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char event[len];
-                    snprintf(event, len, (char *)(data->data_ptr + tkns[i + 1].start));
-                    BOT_event(event);
-                    i++;                                                // Skip token that we just read
-                } else if (json_equal(data->data_ptr, &tkns[i], "s")) { // Sequence
-                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char new_seq[len];
-                    snprintf(new_seq, len, (char *)(data->data_ptr + tkns[i + 1].start));
-                    BOT_set_sequence(new_seq);
-                    i++; // Skip token that we just read
-                } else if (json_equal(data->data_ptr, &tkns[i], "op")) {
-                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char opStr[len];
-                    snprintf(opStr, len, (char *)(data->data_ptr + tkns[i + 1].start));
-                    op_code = atoi(opStr);
-                    i++; // Skip token that we just read
-                } else if (json_equal(data->data_ptr, &tkns[i], "d")) {
-                    int j;
-                    ESP_LOGD(BOT_TAG, "Reading packet data");
-                    if (tkns[i + 1].type != JSMN_OBJECT) {
-                        continue; /* We expect data to be an object */
-                    }
-                    for (j = 0; j < tkns[i + 1].size; j++) {
-                        int k = i + j + 2;
-                        switch (BOT.event) { // Depends on the message event being identified beforehand
-                        case EVENT_GUILD_OBJ:
-                            if (json_equal(data->data_ptr, &tkns[k], "name")) {
-                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char name[len];
-                                snprintf(name, len, (char *)(data->data_ptr + tkns[k + 1].start));
-                                ESP_LOGI(BOT_TAG, "Guild name: %s", name);
-                                j++; // Skip token that we just read
-                            }
-                            break;
-                        case EVENT_READY:
-                            if (json_equal(data->data_ptr, &tkns[k], "session_id")) {
-                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char new_id[len];
-                                snprintf(new_id, len, (char *)(data->data_ptr + tkns[k + 1].start));
-                                BOT_set_session_id(new_id);
-                                j++; // Skip token that we just read
-                            }
-                            break;
-                        default:
-                            if (json_equal(data->data_ptr, &tkns[k], "heartbeat_interval")) {
-                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char beatStr[len];
-                                snprintf(beatStr, len, (char *)(data->data_ptr + tkns[k + 1].start));
-                                int beat = atoi(beatStr);
-                                BOT_set_heartbeat_int(beat);
-                                j++; // Skip token that we just read
-                            }
-                            break;
-                        }
-                    }
-                    i += tkns[i + 1].size + 1; // Skip the tokens that were in the data block
-                    // } else {
-                    // ESP_LOGD(BOT_TAG, "Unused key: %.*s", tkns[i].end - tkns[i].start, data + tkns[i].start);
-                }
-            }
-
-            BOT_op_code(op_code);
-
-            // BOT_receive_payload(data->data_ptr, data->data_len);
+            xSemaphoreGive(message_sema);
         }
-
         break;
     case WEBSOCKET_EVENT_ERROR:
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_ERROR");
@@ -141,13 +64,11 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 static void websocket_app_start(void) {
     esp_websocket_client_config_t websocket_cfg = {};
     websocket_cfg.disable_auto_reconnect = true; // Must implement this with discord API
-    websocket_cfg.disable_pingpong_discon = true;
+    // websocket_cfg.disable_pingpong_discon = true;
     // websocket_cfg.disable_pingpong = true;
     // websocket_cfg.transport = WEBSOCKET_TRANSPORT_OVER_SSL;
     websocket_cfg.uri = CONFIG_WEBSOCKET_URI;
-    websocket_cfg.buffer_size = CONFIG_WEBSOCKET_BUFFER_SIZE;
-
-    shutdown_sema = xSemaphoreCreateBinary();
+    // websocket_cfg.buffer_size = WEBSOCKET_BUFFER_SIZE;
 
     ESP_LOGI(WS_TAG, "Connecting to %s...", websocket_cfg.uri);
 
@@ -166,6 +87,7 @@ static void websocket_app_start(void) {
 
 static void websocket_data_handler(char *data) {
     if (esp_websocket_client_is_connected(client)) {
+        // vTaskDelay(pdMS_TO_TICKS(550));
         ESP_LOGI(WS_TAG, "Sending %s", data);
         esp_websocket_client_send_text(client, data, strlen(data), portMAX_DELAY);
     }
@@ -179,20 +101,23 @@ void app_main(void) {
     esp_log_level_set("WEBSOCKET_CLIENT", ESP_LOG_DEBUG);
     esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
     esp_log_level_set(WS_TAG, ESP_LOG_DEBUG);
-    esp_log_level_set(BOT_TAG, ESP_LOG_DEBUG);
-    esp_log_level_set(PM_TAG, ESP_LOG_DEBUG);
-    esp_log_level_set(JSM_TAG, ESP_LOG_DEBUG);
 
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(attempt_connect());
     start_blink_task();
 
-    ESP_LOGI(WS_TAG, "Initalizing Json parser");
-    jsmn_init(&parser);
+    message_queue = xQueueCreate(MAX_MESSAGE_QUEUE, WEBSOCKET_BUFFER_SIZE);
+    message_length_queue = xQueueCreate(MAX_MESSAGE_QUEUE, MESSAGE_LENGTH_SIZE);
+    if (message_queue == NULL || message_length_queue == NULL) {
+        ESP_LOGE(WS_TAG, "Unable to create message queue");
+        return;
+    }
+
+    message_sema = xSemaphoreCreateBinary();
+    xSemaphoreGive(message_sema);
 
     ESP_LOGI(WS_TAG, "Initalizing Bot session");
-    BOT_init(websocket_data_handler);
+    BOT_init(websocket_data_handler, message_queue, message_length_queue, message_sema);
 
+    ESP_LOGI(WS_TAG, "Initalizing Websocket");
     websocket_app_start();
 }
