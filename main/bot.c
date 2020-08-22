@@ -134,25 +134,25 @@ static void BOT_op_code(int op) {
     BOT.lastOP = op;
     switch (op) {
     case 0:
-        ESP_LOGD(BOT_TAG, "Received op code: Dispatch");
+        ESP_LOGI(BOT_TAG, "Received op code: Dispatch");
         break;
     case 1:
-        ESP_LOGD(BOT_TAG, "Received op code: Heartbeat");
+        ESP_LOGI(BOT_TAG, "Received op code: Heartbeat");
         BOT.ACK = true; // ensure proper heartbeat
         pacemaker_send_heartbeat();
         break;
     case 7:
-        ESP_LOGD(BOT_TAG, "Received op code: Reconnect");
+        ESP_LOGI(BOT_TAG, "Received op code: Reconnect");
         break;
     case 9:
-        ESP_LOGD(BOT_TAG, "Received op code: Invalid Session");
+        ESP_LOGI(BOT_TAG, "Received op code: Invalid Session");
         break;
     case 10:
-        ESP_LOGD(BOT_TAG, "Received op code: Hello");
+        ESP_LOGI(BOT_TAG, "Received op code: Hello");
         BOT_do_login();
         break;
     case 11:
-        ESP_LOGD(BOT_TAG, "Received op code: Heartbeat ACK");
+        ESP_LOGI(BOT_TAG, "Received op code: Heartbeat ACK");
         BOT.ACK = true;
         break;
     case 2: // We should only be sending these op codes
@@ -227,6 +227,7 @@ static void BOT_payload_task(void *pvParameters) {
                             if (json_equal(data_ptr, &tkns[k], "member")) {
                                 ESP_LOGI(BOT_TAG, "Not checking for caster role"); // TODO: check for caster role
                             } else if (json_equal(data_ptr, &tkns[k], "author")) {
+                                ESP_LOGI(BOT_TAG, "Reading author data");
                                 int l;
                                 for (l = 0; l < tkns[k + 1].size; l++) {
                                     int _k = k + l;
@@ -311,7 +312,10 @@ static void BOT_payload_task(void *pvParameters) {
                     i += tkns[i + 1].size + 1; // Skip the tokens that were in the data block
                 }
             }
-            if (!voided) {
+            if (voided) {
+                ESP_LOGW(BOT_TAG, "Last message was voided");
+            } else {
+                ESP_LOGI(BOT_TAG, "Basic message received");
                 // TODO: do somthing with new message
             }
         }
