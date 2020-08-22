@@ -10,22 +10,20 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "esp_event.h"
 #include "esp_log.h"
 #include "esp_websocket_client.h"
 
+#include "heart.c"
 #include "lib/jsmn-valueless-keys/jsmn.h"
 
-#define BOT_TOKEN CONFIG_BOT_TOKEN
 #define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
+#define BOT_TOKEN CONFIG_BOT_TOKEN
 #define JSMN_TOKEN_LENGTH 256
 
 typedef void (*BOT_payload_handler)(char *); // function that will send the bot payloads
 
 static const char *LOGIN_STR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP32\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
-static const char *HB_STR = "{\"op\": 1,\"d\": \"%s\"}";
 static const char *BOT_TAG = "Bot";
-static const char *PM_TAG = "Heart";
 static const char *JSM_TAG = "JSMN";
 
 jsmn_parser parser;
@@ -37,6 +35,7 @@ enum payload_event { // What event did we receive
     EVENT_NULL,
     EVENT_READY,
     EVENT_GUILD_OBJ,
+    MESSAGE_CREATE,
 };
 typedef enum payload_event payload_event;
 
@@ -45,7 +44,6 @@ static QueueHandle_t BOT_message_length_queue;
 static BOT_payload_handler BOT_payload_handle;
 
 struct BOT { // TODO: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
-    TimerHandle_t pacemaker;
     payload_event event;
     bool pacemaker_init;
     char *session_id;
@@ -61,15 +59,21 @@ struct BOT { // TODO: reconnect bot every now and then to reset sequence number 
 // If type != 0 (Default) stop
 // If webhook_id exists stop
 // If content is empty stop
-struct BOT_Basic_Message {
+typedef struct BOT_payload_basic {
     char *channel_id;
     char *username;
     char *discriminator; // @User#1337 <--
     char *message;
-}
+} BOT_payload_basic_t;
 
-static void
-BOT_set_session_id(char *new_id) {
+#define BOT_send_payload(data, len, ...)            \
+    {                                               \
+        snprintf(data_ptr, len, data, __VA_ARGS__); \
+        vTaskDelay(pdMS_TO_TICKS(550));             \
+        BOT_payload_handle(data_ptr);               \
+    }
+
+static void BOT_set_session_id(char *new_id) {
     ESP_LOGI(BOT_TAG, "New Session ID: %s", new_id);
     BOT.session_id = new_id;
 }
@@ -83,43 +87,23 @@ static void BOT_set_event(payload_event event) {
     BOT.event = event;
 }
 
-static void BOT_send_payload(char *data) {
-    vTaskDelay(pdMS_TO_TICKS(550));
-    BOT_payload_handle(data);
-}
-
-static void BOT_heartbeat(TimerHandle_t xTimer) {
-    if (!BOT.ACK) { // confirmation of heartbeat was not received in time
-        ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting");
+static void BOT_heartbeat_handle(const char *data, int len) {
+    if (!BOT.ACK) {                                                                        // confirmation of heartbeat was not received in time
+        ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting"); // TODO: throw error?
     } else {
-        ESP_LOGD(PM_TAG, "ba");
-        BOT.ACK = false; // Expecting ACK to return and set to true before next heartbeat
-        snprintf(data_ptr, 128, HB_STR, BOT.seq);
-        BOT_send_payload(data_ptr);
+        BOT.ACK = false;                      // Expecting ACK to return and set to true before next heartbeat
+        BOT_send_payload(data, len, BOT.seq); // send with sequence number
     }
-    xTimerChangePeriod(BOT.pacemaker, pdMS_TO_TICKS(BOT.heartbeat_int), 0); // ensure pacemaker is up to date
-    xTimerReset(BOT.pacemaker, 0);                                          // Make callback reset the pacemaker
-}
-
-static void BOT_start_pacemaker() {
-    ESP_LOGI(BOT_TAG, "Starting Pacemaker");
-    BOT.pacemaker = xTimerCreate("Bot Pacemaker", pdMS_TO_TICKS(BOT.heartbeat_int), pdFALSE, NULL, BOT_heartbeat);
-    BOT.pacemaker_init = true;
 }
 
 static void BOT_set_heartbeat_int(int beat) {
-    ESP_LOGI(BOT_TAG, "New Heart beat: %d", beat);
-    BOT.heartbeat_int = beat;
+    pacemaker_update_interval(beat);
     BOT.ACK = true;
-    if (!BOT.pacemaker_init) {
-        BOT_start_pacemaker();
-    }
 }
 
 static void BOT_do_login() {
     ESP_LOGI(BOT_TAG, "Logging in...");
-    snprintf(data_ptr, 480, LOGIN_STR, BOT_TOKEN);
-    BOT_send_payload(data_ptr);
+    BOT_send_payload(LOGIN_STR, 480, BOT_TOKEN);
 }
 
 static void BOT_event(char *event) {
@@ -154,7 +138,7 @@ static void BOT_op_code(int op) {
     case 1:
         ESP_LOGD(BOT_TAG, "Received op code: Heartbeat");
         BOT.ACK = true; // ensure proper heartbeat
-        BOT_heartbeat(BOT.pacemaker);
+        pacemaker_send_heartbeat();
         break;
     case 7:
         ESP_LOGD(BOT_TAG, "Received op code: Reconnect");
@@ -169,7 +153,6 @@ static void BOT_op_code(int op) {
     case 11:
         ESP_LOGD(BOT_TAG, "Received op code: Heartbeat ACK");
         BOT.ACK = true;
-        ESP_LOGD(PM_TAG, "dum");
         break;
     case 2: // We should only be sending these op codes
     case 3:
@@ -205,6 +188,7 @@ static void BOT_payload_task(void *pvParameters) {
                 ESP_LOGE(JSM_TAG, "Object expected in JSON");
             }
         } else {
+
             for (size_t i = 1; i < r; i++) {
                 if (json_equal(data_ptr, &tkns[i], "t")) { // Event name
                     int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
@@ -230,9 +214,62 @@ static void BOT_payload_task(void *pvParameters) {
                     if (tkns[i + 1].type != JSMN_OBJECT) {
                         continue; /* We expect data to be an object */
                     }
+                    BOT_payload_basic_t payload = {};
                     for (j = 0; j < tkns[i + 1].size; j++) {
                         int k = i + j + 2;
                         switch (BOT.event) { // Depends on the message event being identified beforehand
+                        case MESSAGE_CREATE:
+                            ESP_LOGI(BOT_TAG, "Message received");
+                            if (json_equal(data_ptr, &tkns[k], "member")) { // TODO: check for caster role
+                                for (l = 0; l < tkns[k + 1].size; l++) {
+                                    int _k = k + l;
+                                    if (json_equal(data_ptr, &tkns[_k], "roles")) {
+                                        int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
+                                        char data[len];
+                                        snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
+                                        ESP_LOGI(BOT_TAG, "Author: %s", data);
+                                        payload.author = data;
+                                        l++;
+                                    }
+                                }
+                                j += tkns[j + 1].size + 1; // Skip the tokens that were in the data block
+                            } else if (json_equal(data_ptr, &tkns[k], "author")) {
+                                for (l = 0; l < tkns[k + 1].size; l++) {
+                                    int _k = k + l;
+                                    if (json_equal(data_ptr, &tkns[_k], "username")) {
+                                        int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
+                                        char data[len];
+                                        snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
+                                        ESP_LOGI(BOT_TAG, "Author: %s", data);
+                                        payload.author = data;
+                                        l++;
+                                    } else if (json_equal(data_ptr, &tkns[_k], "discriminator")) {
+                                        int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
+                                        char data[len];
+                                        snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
+                                        ESP_LOGI(BOT_TAG, "Discriminator: %s", data);
+                                        payload.discriminator = data;
+                                        l++;
+                                    }
+                                }
+                                j += tkns[j + 1].size + 1; // Skip the tokens that were in the data block
+                            } else if (json_equal(data_ptr, &tkns[k], "channel_id")) {
+                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                char data[len];
+                                snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
+                                ESP_LOGI(BOT_TAG, "Channel: %s", data);
+                                payload.channel_id = data;
+                                j++;
+                            } else if (json_equal(data_ptr, &tkns[k], "content")) {
+                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                char data[len];
+                                snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
+                                ESP_LOGI(BOT_TAG, "Message: %s", data);
+                                payload.message = data;
+                                j++;
+                            }
+
+                            break;
                         case EVENT_GUILD_OBJ:
                             if (json_equal(data_ptr, &tkns[k], "name") && !json_null(data_ptr, &tkns[k + 1])) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
@@ -271,7 +308,7 @@ static void BOT_payload_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
-static void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_queue_handle, QueueHandle_t message_length_queue_handle) {
+extern void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_queue_handle, QueueHandle_t message_length_queue_handle) {
     esp_log_level_set(BOT_TAG, ESP_LOG_DEBUG);
     esp_log_level_set(PM_TAG, ESP_LOG_DEBUG);
     esp_log_level_set(JSM_TAG, ESP_LOG_DEBUG);
@@ -282,7 +319,6 @@ static void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_q
     BOT_message_queue = message_queue_handle;
     BOT_message_length_queue = message_length_queue_handle;
 
-    BOT.pacemaker_init = false;
     BOT.ACK = false;
     BOT.activeGuild = "null";
     BOT.ready = false;
@@ -293,4 +329,7 @@ static void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_q
     if (xTaskCreate(BOT_payload_task, "BOT task", 8192, NULL, 8, NULL) != pdPASS) {
         ESP_LOGE(BOT_TAG, "Failed to start BOT task!");
     }
+
+    ESP_LOGI(BOT_TAG, "Starting Pacemaker timer");
+    pacemaker_init(BOT_heartbeat_handle);
 }
