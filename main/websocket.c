@@ -20,8 +20,8 @@
 
 #define NO_DATA_TIMEOUT_SEC CONFIG_WEBSOCKET_TIMEOUT_SEC
 #define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
+#define MAX_MESSAGE_QUEUE CONFIG_WEBSOCKET_QUEUE_SIZE
 #define MESSAGE_LENGTH_SIZE sizeof(int)
-#define MAX_MESSAGE_QUEUE 5
 
 static const char *WS_TAG = "WebSocket";
 
@@ -61,11 +61,8 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 static void websocket_app_start(void) {
     esp_websocket_client_config_t websocket_cfg = {};
     websocket_cfg.disable_auto_reconnect = true; // Must implement this with discord API
-    // websocket_cfg.disable_pingpong_discon = true;
-    // websocket_cfg.disable_pingpong = true;
-    // websocket_cfg.transport = WEBSOCKET_TRANSPORT_OVER_SSL;
     websocket_cfg.uri = CONFIG_WEBSOCKET_URI;
-    // websocket_cfg.buffer_size = WEBSOCKET_BUFFER_SIZE;
+    websocket_cfg.buffer_size = WEBSOCKET_BUFFER_SIZE;
 
     ESP_LOGI(WS_TAG, "Connecting to %s...", websocket_cfg.uri);
 

@@ -12,6 +12,12 @@ menu "ESP_BOT_CONFIG"
         help
             Maximum size of the websocket message
 
+    config WEBSOCKET_QUEUE_SIZE
+        int "Websocket queue size"
+        default 3
+        help
+            Maximum number of websocket messages to store
+
     config WEBSOCKET_URI
         string "Websocket endpoint URI"
         default "wss://gateway.discord.gg/?v=6&encoding=json"
