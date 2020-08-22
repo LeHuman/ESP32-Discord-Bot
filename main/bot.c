@@ -20,6 +20,8 @@
 #define BOT_TOKEN CONFIG_BOT_TOKEN
 #define JSMN_TOKEN_LENGTH 256
 
+// TODO: add special "!help" case that prints what the bot's keyword prefix is, just in case
+
 typedef void (*BOT_payload_handler)(char *); // function that will send the bot payloads
 
 static const char *LOGIN_STR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP32\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
@@ -56,15 +58,12 @@ struct BOT { // TODO: reconnect bot every now and then to reset sequence number 
     bool ACK;
 } BOT;
 
-// If type != 0 (Default) stop
-// If webhook_id exists stop
-// If content is empty stop
-typedef struct BOT_payload_basic {
+typedef struct BOT_basic_message {
     char *channel_id;
-    char *username;
+    char *author;
     char *discriminator; // @User#1337 <--
-    char *message;
-} BOT_payload_basic_t;
+    char *content;
+} BOT_basic_message_t;
 
 #define BOT_send_payload(data, len, ...)            \
     {                                               \
@@ -188,8 +187,11 @@ static void BOT_payload_task(void *pvParameters) {
                 ESP_LOGE(JSM_TAG, "Object expected in JSON");
             }
         } else {
-
+            BOT_basic_message_t message = {}; // initialize new payload
+            bool voided = false;
             for (size_t i = 1; i < r; i++) {
+                if (voided) // break if there was an issue with reading this payload
+                    break;
                 if (json_equal(data_ptr, &tkns[i], "t")) { // Event name
                     int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
                     char event[len];
@@ -210,30 +212,20 @@ static void BOT_payload_task(void *pvParameters) {
                     i++; // Skip token that we just read
                 } else if (json_equal(data_ptr, &tkns[i], "d")) {
                     int j;
-                    ESP_LOGD(BOT_TAG, "Reading packet data");
                     if (tkns[i + 1].type != JSMN_OBJECT) {
                         continue; /* We expect data to be an object */
                     }
-                    BOT_payload_basic_t payload = {};
+                    ESP_LOGI(BOT_TAG, "Reading payload data");
                     for (j = 0; j < tkns[i + 1].size; j++) {
+                        if (voided) // break if there was an issue with reading this payload's data
+                            break;
                         int k = i + j + 2;
                         switch (BOT.event) { // Depends on the message event being identified beforehand
                         case MESSAGE_CREATE:
-                            ESP_LOGI(BOT_TAG, "Message received");
-                            if (json_equal(data_ptr, &tkns[k], "member")) { // TODO: check for caster role
-                                for (l = 0; l < tkns[k + 1].size; l++) {
-                                    int _k = k + l;
-                                    if (json_equal(data_ptr, &tkns[_k], "roles")) {
-                                        int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
-                                        char data[len];
-                                        snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
-                                        ESP_LOGI(BOT_TAG, "Author: %s", data);
-                                        payload.author = data;
-                                        l++;
-                                    }
-                                }
-                                j += tkns[j + 1].size + 1; // Skip the tokens that were in the data block
+                            if (json_equal(data_ptr, &tkns[k], "member")) {
+                                ESP_LOGI(BOT_TAG, "Not checking for caster role"); // TODO: check for caster role
                             } else if (json_equal(data_ptr, &tkns[k], "author")) {
+                                int l;
                                 for (l = 0; l < tkns[k + 1].size; l++) {
                                     int _k = k + l;
                                     if (json_equal(data_ptr, &tkns[_k], "username")) {
@@ -241,14 +233,14 @@ static void BOT_payload_task(void *pvParameters) {
                                         char data[len];
                                         snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
                                         ESP_LOGI(BOT_TAG, "Author: %s", data);
-                                        payload.author = data;
+                                        message.author = data;
                                         l++;
                                     } else if (json_equal(data_ptr, &tkns[_k], "discriminator")) {
                                         int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
                                         char data[len];
                                         snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
                                         ESP_LOGI(BOT_TAG, "Discriminator: %s", data);
-                                        payload.discriminator = data;
+                                        message.discriminator = data;
                                         l++;
                                     }
                                 }
@@ -258,17 +250,31 @@ static void BOT_payload_task(void *pvParameters) {
                                 char data[len];
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
                                 ESP_LOGI(BOT_TAG, "Channel: %s", data);
-                                payload.channel_id = data;
+                                message.channel_id = data;
                                 j++;
                             } else if (json_equal(data_ptr, &tkns[k], "content")) {
+                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1; // TODO: only validate messages that start with !cast
+                                if (len < 5) {                                       // TODO: replace with actual bot keyword length
+                                    voided = true;
+                                } else {
+                                    char data[len];
+                                    snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
+                                    ESP_LOGI(BOT_TAG, "Message: %s", data);
+                                    message.content = data;
+                                }
+                                j++;
+                            } else if (json_equal(data_ptr, &tkns[k], "type")) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
                                 char data[len];
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
-                                ESP_LOGI(BOT_TAG, "Message: %s", data);
-                                payload.message = data;
+                                if (strcmp(data, "0") != 0) {
+                                    voided = true;
+                                }
+                                j++;
+                            } else if (json_equal(data_ptr, &tkns[k], "webhook_id")) { // Don't read webhook messages
+                                voided = true;
                                 j++;
                             }
-
                             break;
                         case EVENT_GUILD_OBJ:
                             if (json_equal(data_ptr, &tkns[k], "name") && !json_null(data_ptr, &tkns[k + 1])) {
@@ -302,6 +308,9 @@ static void BOT_payload_task(void *pvParameters) {
                     }
                     i += tkns[i + 1].size + 1; // Skip the tokens that were in the data block
                 }
+            }
+            if (!voided) {
+                // TODO: do somthing with new message
             }
         }
     }
