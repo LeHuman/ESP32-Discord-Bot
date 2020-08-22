@@ -16,7 +16,7 @@ extern void pacemaker_send_heartbeat() {
 }
 
 extern void pacemaker_update_interval(int heartbeat) {
-    ESP_LOGI(PM_TAG, "New Heart beat: %d", beat);                                  // log update
+    ESP_LOGI(PM_TAG, "New Heart beat: %d", heartbeat);                             // log update
     pacemaker_send_heartbeat();                                                    // Send once as we are updating the heartbeat
     xTimerChangePeriod(pacemaker_handle, pdMS_TO_TICKS(heartbeat), portMAX_DELAY); // Ensure pacemaker is up to date
     xTimerReset(pacemaker_handle, portMAX_DELAY);                                  // Reset the pacemaker
