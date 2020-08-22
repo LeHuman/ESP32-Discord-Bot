@@ -93,7 +93,6 @@ void app_main(void) {
     esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_level_set("WEBSOCKET_CLIENT", ESP_LOG_DEBUG);
     esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
-    esp_log_level_set(WS_TAG, ESP_LOG_DEBUG);
 
     ESP_ERROR_CHECK(attempt_connect());
     start_blink_task();

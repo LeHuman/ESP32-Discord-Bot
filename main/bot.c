@@ -324,10 +324,6 @@ static void BOT_payload_task(void *pvParameters) {
 }
 
 extern void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_queue_handle, QueueHandle_t message_length_queue_handle) {
-    esp_log_level_set(BOT_TAG, ESP_LOG_DEBUG);
-    esp_log_level_set(PM_TAG, ESP_LOG_DEBUG);
-    esp_log_level_set(JSM_TAG, ESP_LOG_DEBUG);
-
     ESP_LOGI(JSM_TAG, "Initalizing Json parser");
 
     BOT_payload_handle = payload_handle;
