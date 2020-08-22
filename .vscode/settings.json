@@ -70,7 +70,8 @@
     "xtr1common": "c",
     "jsmn-vk.h": "c",
     "esp_log.h": "c",
-    "semphr.h": "c"
+    "semphr.h": "c",
+    "xlocmes": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [

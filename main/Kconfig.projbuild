@@ -6,6 +6,12 @@ menu "ESP_BOT_CONFIG"
         help
             Your discord bot token goes here
 
+    config BOT_PREFIX
+        string "Discord Bot Prefix"
+        default "!Cast"
+        help
+            Prefix of a message to give the bot a command ( case insensitive )
+
     config WEBSOCKET_BUFFER_SIZE
         int "Websocket buffer size"
         default 8192
