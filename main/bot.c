@@ -105,13 +105,15 @@ static void BOT_do_login() {
     BOT_send_payload(LOGIN_STR, 480, BOT_TOKEN);
 }
 
-static void BOT_event(char *event) {
+static void BOT_event(char *event) { // TODO: set all the events that we care about
     ESP_LOGI(BOT_TAG, "Message event: %s", event);
 
     if (strcmp(event, "READY") == 0) {
         BOT_set_event(EVENT_READY);
     } else if (strcmp(event, "GUILD_CREATE") == 0) {
         BOT_set_event(EVENT_GUILD_OBJ);
+    } else if (strcmp(event, "MESSAGE_CREATE") == 0) {
+        BOT_set_event(MESSAGE_CREATE);
     } else {
         BOT_set_event(EVENT_NULL);
     }
