@@ -17,15 +17,18 @@
 
 #include "discord_post.c"
 #include "heart.c"
+#include "json_builder.c"
 
 #define JSMN_TOKEN_LENGTH 256
 #define BOT_TOKEN CONFIG_BOT_TOKEN
 #define BOT_PREFIX CONFIG_BOT_PREFIX
 #define BOT_PREFIX_LENGTH strlen(BOT_PREFIX)
-#define BOT_CASE_SENSITIVE CONFIG_BOT_CASE_SENSITIVE // TODO: implement case sensitive alt
+#define BOT_CASE_SENSITIVE CONFIG_BOT_CASE_SENSITIVE
 #define BOT_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
 
+// TODO: implement case sensitive text option
 // TODO: add special "!help" case that prints what the bot's keyword prefix is, just in case
+// TODO: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
 
 typedef void (*BOT_payload_handler)(char *); // function that will send the bot payloads
 
@@ -40,6 +43,19 @@ jsmntok_t tkns[JSMN_TOKEN_LENGTH]; // IMPROVE: use dynamic token buffer
 static char data_ptr[BOT_BUFFER_SIZE];
 static int data_len = 0;
 
+static QueueHandle_t BOT_message_queue;
+static QueueHandle_t BOT_message_length_queue;
+static BOT_payload_handler BOT_payload_handle;
+static payload_event BOT_event = EVENT_NULL;
+static char *BOT_session_id = "null";
+static char *BOT_token = "null";
+static char *BOT_seq = "null"; // format as integer, "null" otherwise
+static int BOT_heartbeat_int = -1;
+static int BOT_lastOP = -1;
+static char *BOT_activeGuild = "null";
+static bool BOT_ready = false;
+static bool BOT_ACK = false;
+
 enum payload_event { // What event did we receive
     EVENT_NULL,
     EVENT_READY,
@@ -47,23 +63,6 @@ enum payload_event { // What event did we receive
     MESSAGE_CREATE,
 };
 typedef enum payload_event payload_event;
-
-static QueueHandle_t BOT_message_queue;
-static QueueHandle_t BOT_message_length_queue;
-static BOT_payload_handler BOT_payload_handle;
-
-struct BOT { // TODO: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
-    payload_event event;
-    bool pacemaker_init;
-    char *session_id;
-    char *token;
-    char *seq; // format as integer, "null" otherwise
-    int heartbeat_int;
-    int lastOP;
-    char *activeGuild;
-    bool ready;
-    bool ACK;
-} BOT;
 
 typedef struct BOT_basic_message {
     char *channel_id;
@@ -83,30 +82,30 @@ typedef struct BOT_basic_message {
 
 static void BOT_set_session_id(char *new_id) {
     ESP_LOGI(BOT_TAG, "New Session ID: %s", new_id);
-    BOT.session_id = strdup(new_id); // IMPROVE: Does this need to be freed?
+    BOT_session_id = strdup(new_id); // IMPROVE: Does this need to be freed?
 }
 
 static void BOT_set_sequence(char *new_seq) {
     ESP_LOGI(BOT_TAG, "Sequence: %s", new_seq);
-    BOT.seq = strdup(new_seq);
+    BOT_seq = strdup(new_seq);
 }
 
 static void BOT_set_event(payload_event event) {
-    BOT.event = event;
+    BOT_event = event;
 }
 
 static void BOT_heartbeat_handle(const char *data, int len) {
-    if (!BOT.ACK) {                                                                        // confirmation of heartbeat was not received in time
+    if (!BOT_ACK) {                                                                        // confirmation of heartbeat was not received in time
         ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting"); // TODO: throw error?
     } else {
-        BOT.ACK = false;                      // Expecting ACK to return and set to true before next heartbeat
-        BOT_send_payload(data, len, BOT.seq); // send with sequence number
+        BOT_ACK = false;                      // Expecting ACK to return and set to true before next heartbeat
+        BOT_send_payload(data, len, BOT_seq); // send with sequence number
     }
 }
 
 static void BOT_set_heartbeat_int(int beat) {
     pacemaker_update_interval(beat);
-    BOT.ACK = true;
+    BOT_ACK = true;
 }
 
 static void BOT_do_login() {
@@ -114,7 +113,7 @@ static void BOT_do_login() {
     BOT_send_payload(LOGIN_STR, 480, BOT_TOKEN);
 }
 
-static void BOT_event(char *event) { // TODO: set all the events that we care about
+static void BOT_new_event(char *event) { // TODO: set all the events that we care about
     ESP_LOGI(BOT_TAG, "Message event: %s", event);
 
     if (strcmp(event, "READY") == 0) {
@@ -140,14 +139,14 @@ static bool json_null(const char *json, jsmntok_t *tok) {
 }
 
 static void BOT_op_code(int op) {
-    BOT.lastOP = op;
+    BOT_lastOP = op;
     switch (op) {
     case 0:
         ESP_LOGI(BOT_TAG, "Received op code: Dispatch");
         break;
     case 1:
         ESP_LOGI(BOT_TAG, "Received op code: Heartbeat");
-        BOT.ACK = true; // ensure proper heartbeat
+        BOT_ACK = true; // ensure proper heartbeat
         pacemaker_send_heartbeat();
         break;
     case 7:
@@ -162,7 +161,7 @@ static void BOT_op_code(int op) {
         break;
     case 11:
         ESP_LOGI(BOT_TAG, "Received op code: Heartbeat ACK");
-        BOT.ACK = true;
+        BOT_ACK = true;
         break;
     case 2: // We should only be sending these op codes
     case 3:
@@ -257,7 +256,7 @@ static void BOT_payload_task(void *pvParameters) {
                     int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
                     char *event = malloc(len);
                     snprintf(event, len, (char *)(data_ptr + tkns[i + 1].start));
-                    BOT_event(event);
+                    BOT_new_event(event);
                     free(event);
                     i++; // Skip tokens that we just read
                 } else if (json_equal(data_ptr, &tkns[i], "s") && !json_null(data_ptr, &tkns[i + 1])) {
@@ -293,7 +292,7 @@ static void BOT_payload_task(void *pvParameters) {
                             break;
                         }
 
-                        switch (BOT.event) { // Depends on the message event being identified beforehand
+                        switch (BOT_event) { // Depends on the message event being identified beforehand
                         case MESSAGE_CREATE:
                             if (json_equal(data_ptr, &tkns[k], "member")) {
                                 ESP_LOGD(BOT_TAG, "data: member");
@@ -441,12 +440,6 @@ extern void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_q
     BOT_payload_handle = payload_handle;
     BOT_message_queue = message_queue_handle;
     BOT_message_length_queue = message_length_queue_handle;
-
-    BOT.ACK = false;
-    BOT.activeGuild = "null";
-    BOT.ready = false;
-    BOT.seq = "null";
-    BOT.event = EVENT_NULL;
 
     discord_rest_init(BOT_TOKEN);
 
