@@ -12,9 +12,9 @@
 
 #include "esp_log.h"
 #include "esp_websocket_client.h"
+#include "jsmn.h"
 
 #include "heart.c"
-#include "lib/jsmn-valueless-keys/jsmn.h"
 #include "restPost.c"
 
 #define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
@@ -415,7 +415,7 @@ static void BOT_payload_task(void *pvParameters) {
                 ESP_LOGI(BOT_TAG, "Author: %s", bot_message->author);
                 ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message->guild_id);
                 ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message->channel_id);
-                discord_rest_post(bot_message->author, bot_message->guild_id, bot_message->author_mention, bot_message->channel_id);
+                discord_rest_post(bot_message->author, bot_message->content, bot_message->author_mention, bot_message->channel_id);
                 free(bot_message);
                 // TODO: do somthing with new message
             }
