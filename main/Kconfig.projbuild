@@ -42,6 +42,26 @@ menu "ESP config"
 
     endmenu
 
+    menu "REST POST"
+
+        config REST_PATH_PATTERN
+            string "POST path pattern"
+            default "/api/channels/%s/messages"
+            help
+                Set the pattern for the path of POST requests
+
+                %s is replaced with a channel_id
+
+        config REST_AUTH_PREFIX
+            string "Authentication Prefix"
+            default "Bot "
+            help
+                Set the prefix for the authentication header
+
+                The Discord Bot API Token is concatenated after this string
+
+    endmenu
+
     menu "Websocket"
 
         config WEBSOCKET_BUFFER_SIZE
