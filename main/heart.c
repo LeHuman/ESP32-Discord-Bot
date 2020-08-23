@@ -23,6 +23,7 @@ extern void pacemaker_update_interval(int heartbeat) {
 }
 
 extern void pacemaker_init(pacmaker_message_handle pacemaker_message_handler) {
+    ESP_LOGI(PM_TAG, "Starting Pacemaker timer");
     message_handle = pacemaker_message_handler;
     pacemaker_handle = xTimerCreate("Bot Pacemaker", portMAX_DELAY, pdFALSE, NULL, pacemaker_send_heartbeat);
 }
