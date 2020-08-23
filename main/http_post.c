@@ -13,16 +13,14 @@
 
 #include "esp_http_client.h"
 
-#define HTTP_MAX_BUFFER 2048
+#define HTTP_MAX_BUFFER 2048 // TODO: add defines to Kconfig
 #define HTTP_HOST "discordapp.com"
-#define REST_PATH "/api/channels/%s/messages"
-#define REST_AUTH_PREFIX "Bot "
 #define HTTP_MAX_QUEUE CONFIG_WEBSOCKET_QUEUE_SIZE
 
 static const char *HTTP_TAG = "HTTP_CLIENT";
-static char local_response_buffer[HTTP_MAX_BUFFER] = {0};
 static const char *MSG_STR = "{\"content\":\"%s\",\"tts\":false,\"embed\":{\"title\":\"%s\",\"description\":\"%s\"}}";
 static const char *authHeader;
+static char local_response_buffer[HTTP_MAX_BUFFER] = {0};
 static QueueHandle_t HTTP_POST_Queue;
 
 typedef struct http_post_data {
@@ -141,32 +139,9 @@ void http_rest_post_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
-extern void discord_rest_post(const char *content, const char *title, const char *description, const char *channel_id) {
-    int length = strlen(REST_PATH) + strlen(channel_id) + 1;
-    char path_buf[length];
-    snprintf(path_buf, length, REST_PATH, channel_id);
-
-    length = strlen(MSG_STR) + strlen(content) + strlen(title) + strlen(description) + 1;
-    char jsonContent_buf[length];
-    snprintf(jsonContent_buf, length, MSG_STR, content, title, description);
-
-    // Allocate memory, as only the pointers will be passed through queue
-    http_post_data_t *postData = calloc(1, sizeof(struct http_post_data));
-    postData->jsonContent = strdup(jsonContent_buf);
-    postData->path = strdup(path_buf);
-    xQueueSendToBack(HTTP_POST_Queue, postData, 0);
-}
-
-static void discord_rest_set_auth(const char *bot_token) {
-    int length = strlen(REST_AUTH_PREFIX) + strlen(bot_token) + 1;
-    char authToken_buf[length];
-    snprintf(authToken_buf, length, "%s%s", REST_AUTH_PREFIX, bot_token);
-    authHeader = strdup(authToken_buf);
-}
-
-extern QueueHandle_t http_init(const char *bot_token) { // TODO: Move discord related things from http file
+extern QueueHandle_t http_init(const char *authHeaderStr) {
+    authHeader = authHeaderStr;
     ESP_LOGI(HTTP_TAG, "Starting HTTP POST Task");
-    discord_rest_set_auth(bot_token);
     HTTP_POST_Queue = xQueueCreate(HTTP_MAX_QUEUE, sizeof(struct http_post_data)); // strings should be allocated then freed
     xTaskCreate(http_rest_post_task, "HTTP POST", 4096, NULL, 16, NULL);
     return HTTP_POST_Queue;

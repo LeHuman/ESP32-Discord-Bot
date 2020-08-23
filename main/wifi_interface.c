@@ -11,9 +11,9 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#define EXAMPLE_ESP_WIFI_SSID CONFIG_ESP_WIFI_SSID
-#define EXAMPLE_ESP_WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
-#define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_RETRY
+#define WIFI_SSID CONFIG_ESP_WIFI_SSID
+#define WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
+#define MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_RETRY
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -35,7 +35,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         connected = false;
-        if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
+        if (s_retry_num < MAXIMUM_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
             ESP_LOGI(WIFI_TAG, "retry to connect to the AP");
@@ -78,8 +78,8 @@ void wifi_init_sta(void) {
 
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = EXAMPLE_ESP_WIFI_SSID,
-            .password = EXAMPLE_ESP_WIFI_PASS,
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASS,
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
 
             .pmf_cfg = {
@@ -104,10 +104,10 @@ void wifi_init_sta(void) {
     /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
      * happened. */
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(WIFI_TAG, "connected to ap SSID:%s password:%s", EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
+        ESP_LOGI(WIFI_TAG, "connected to ap SSID:%s password:%s", WIFI_SSID, WIFI_PASS);
         connected = true;
     } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(WIFI_TAG, "Failed to connect to SSID:%s, password:%s", EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
+        ESP_LOGI(WIFI_TAG, "Failed to connect to SSID:%s, password:%s", WIFI_SSID, WIFI_PASS);
     } else {
         ESP_LOGE(WIFI_TAG, "UNEXPECTED EVENT");
     }

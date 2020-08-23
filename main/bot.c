@@ -3,6 +3,7 @@
 #include "esp_wifi.h"
 #include "nvs_flash.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -14,8 +15,8 @@
 #include "esp_websocket_client.h"
 #include "jsmn.h"
 
+#include "discord_post.c"
 #include "heart.c"
-#include "restPost.c"
 
 #define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
 #define BOT_TOKEN CONFIG_BOT_TOKEN
@@ -253,23 +254,26 @@ static void BOT_payload_task(void *pvParameters) {
                 } else if (json_equal(data_ptr, &tkns[i], "t")) { // Event name
                     ESP_LOGD(BOT_TAG, "Get event name");
                     int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char event[len];
+                    char *event = malloc(len);
                     snprintf(event, len, (char *)(data_ptr + tkns[i + 1].start));
                     BOT_event(event);
+                    free(event);
                     i++; // Skip tokens that we just read
                 } else if (json_equal(data_ptr, &tkns[i], "s") && !json_null(data_ptr, &tkns[i + 1])) {
                     ESP_LOGD(BOT_TAG, "Get sequence");
                     int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char new_seq[len];
+                    char *new_seq = malloc(len);
                     snprintf(new_seq, len, (char *)(data_ptr + tkns[i + 1].start));
                     BOT_set_sequence(new_seq);
+                    free(new_seq);
                     i++; // Skip tokens that we just read
                 } else if (json_equal(data_ptr, &tkns[i], "op") && !json_null(data_ptr, &tkns[i + 1])) {
                     ESP_LOGD(BOT_TAG, "Get op code");
                     int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char opStr[len];
+                    char *opStr = malloc(len);
                     snprintf(opStr, len, (char *)(data_ptr + tkns[i + 1].start));
                     BOT_op_code(atoi(opStr));
+                    free(opStr);
                     i++; // Skip tokens that we just read
                 } else if (json_equal(data_ptr, &tkns[i], "d")) {
 
@@ -302,23 +306,24 @@ static void BOT_payload_task(void *pvParameters) {
                                     if (json_equal(data_ptr, &tkns[_k], "username")) {
                                         ESP_LOGD(BOT_TAG, "data: username");
                                         int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
-                                        char data[len];
+                                        char *data = malloc(len);
                                         snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
                                         bot_message->author = strdup(data);
+                                        free(data);
                                         _k += 2;
                                     } else if (json_equal(data_ptr, &tkns[_k], "id")) {
                                         ESP_LOGD(BOT_TAG, "data: id");
                                         int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
-                                        char data[len];
+                                        char *data = malloc(len);
                                         snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
-
                                         bot_message->author_id = strdup(data);
+                                        free(data);
 
                                         len = len + strlen(BOT_Mention_Pattern);
-                                        char data2[len];
-                                        snprintf(data2, len, BOT_Mention_Pattern, bot_message->author_id);
-                                        bot_message->author_mention = strdup(data2);
-
+                                        *data = malloc(len);
+                                        snprintf(data, len, BOT_Mention_Pattern, bot_message->author_id);
+                                        bot_message->author_mention = strdup(data);
+                                        free(data);
                                         _k += 2;
                                     } else {
                                         _k += jsmn_get_total_size(&tkns[_k]);
@@ -328,9 +333,10 @@ static void BOT_payload_task(void *pvParameters) {
                             } else if (json_equal(data_ptr, &tkns[k], "channel_id")) {
                                 ESP_LOGD(BOT_TAG, "data: channel_id");
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char data[len];
+                                char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
                                 bot_message->channel_id = strdup(data);
+                                free(data);
                                 k += jsmn_get_total_size(&tkns[k]);
                             } else if (json_equal(data_ptr, &tkns[k], "content")) { // Only accept prefixed content
                                 ESP_LOGD(BOT_TAG, "data: content");
@@ -340,7 +346,7 @@ static void BOT_payload_task(void *pvParameters) {
                                     voided = true;
                                     continue;
                                 }
-                                char data[len];
+                                char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
                                 if (!BOT_prefix(data)) { // Void if prefix does not exist
                                     ESP_LOGW(BOT_TAG, "Message does not have prefix, ignoring");
@@ -348,22 +354,25 @@ static void BOT_payload_task(void *pvParameters) {
                                     continue;
                                 }
                                 bot_message->content = strdup(data + BOT_PREFIX_LENGTH); // Allocate space while ignoring the prefix
+                                free(data);
                                 k += jsmn_get_total_size(&tkns[k]);
                             } else if (json_equal(data_ptr, &tkns[k], "guild_id")) {
                                 ESP_LOGD(BOT_TAG, "data: guild_id");
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char data[len];
+                                char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
                                 bot_message->guild_id = strdup(data);
+                                free(data);
                                 k += jsmn_get_total_size(&tkns[k]);
                             } else if (json_equal(data_ptr, &tkns[k], "type")) {
                                 ESP_LOGD(BOT_TAG, "data: type");
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char data[len];
+                                char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
                                 if (strcmp(data, "0") != 0) {
                                     voided = true;
                                 }
+                                free(data);
                                 k += jsmn_get_total_size(&tkns[k]);
                             } else if (json_equal(data_ptr, &tkns[k], "webhook_id")) { // Don't read webhook messages
                                 ESP_LOGD(BOT_TAG, "data: webhook_id");
@@ -377,27 +386,30 @@ static void BOT_payload_task(void *pvParameters) {
                         case EVENT_GUILD_OBJ:
                             if (json_equal(data_ptr, &tkns[k], "name") && !json_null(data_ptr, &tkns[k + 1])) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char name[len];
+                                char *name = malloc(len);
                                 snprintf(name, len, (char *)(data_ptr + tkns[k + 1].start));
                                 k += jsmn_get_total_size(&tkns[k]);
+                                free(name);
                             }
                             break;
                         case EVENT_READY:
                             if (json_equal(data_ptr, &tkns[k], "session_id") && !json_null(data_ptr, &tkns[k + 1])) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char new_id[len];
+                                char *new_id = malloc(len);
                                 snprintf(new_id, len, (char *)(data_ptr + tkns[k + 1].start));
                                 BOT_set_session_id(new_id);
+                                free(new_id);
                                 k += jsmn_get_total_size(&tkns[k]);
                             }
                             break;
                         default:
                             if (json_equal(data_ptr, &tkns[k], "heartbeat_interval") && !json_null(data_ptr, &tkns[k + 1])) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char beatStr[len];
+                                char *beatStr = malloc(len);
                                 snprintf(beatStr, len, (char *)(data_ptr + tkns[k + 1].start));
                                 int beat = atoi(beatStr);
                                 BOT_set_heartbeat_int(beat);
+                                free(beatStr);
                                 k += jsmn_get_total_size(&tkns[k]);
                             }
                             break;

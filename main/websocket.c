@@ -20,6 +20,7 @@
 
 #define NO_DATA_TIMEOUT_SEC CONFIG_WEBSOCKET_TIMEOUT_SEC
 #define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
+#define WEBSOCKET_URI CONFIG_WEBSOCKET_URI
 #define MAX_MESSAGE_QUEUE CONFIG_WEBSOCKET_QUEUE_SIZE
 #define MESSAGE_LENGTH_SIZE sizeof(int)
 
@@ -59,10 +60,11 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 }
 
 static void websocket_app_start(void) {
-    esp_websocket_client_config_t websocket_cfg = {};
-    websocket_cfg.disable_auto_reconnect = true; // Must implement this with discord API
-    websocket_cfg.uri = CONFIG_WEBSOCKET_URI;
-    websocket_cfg.buffer_size = WEBSOCKET_BUFFER_SIZE;
+    esp_websocket_client_config_t websocket_cfg = {
+        .disable_auto_reconnect = true, // Must implement this with discord API
+        .uri = WEBSOCKET_URI,
+        .buffer_size = WEBSOCKET_BUFFER_SIZE,
+    };
 
     ESP_LOGI(WS_TAG, "Connecting to %s...", websocket_cfg.uri);
 
@@ -71,13 +73,6 @@ static void websocket_app_start(void) {
 
     esp_websocket_client_start(client);
 }
-
-// static void websocket_app_stop(void) {
-//     xSemaphoreTake(shutdown_sema, portMAX_DELAY);
-//     esp_websocket_client_stop(client);
-//     ESP_LOGI(WS_TAG, "Websocket Stopped");
-//     esp_websocket_client_destroy(client);
-// }
 
 static void websocket_data_handler(char *data) {
     if (esp_websocket_client_is_connected(client)) {

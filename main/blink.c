@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #define BLINK_GPIO CONFIG_BLINK_GPIO
+
 static char run_blink = 0;
 const TickType_t xDelay = portTICK_PERIOD_MS / 3;
 
