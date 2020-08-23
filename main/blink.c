@@ -8,11 +8,11 @@
 static char run_blink = 0;
 const TickType_t xDelay = portTICK_PERIOD_MS / 3;
 
-static void blink_mult(char a) {
+extern void blink_mult(char a) {
     run_blink += a;
 }
 
-static void blink() {
+extern void blink() {
     run_blink += 1;
 }
 
@@ -33,6 +33,6 @@ static void blink_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
-static void start_blink_task() {
+extern void start_blink_task() {
     xTaskCreate(blink_task, "blinker", 2048, NULL, 1, NULL); // 1576 is exact number of bytes actually needed
 }
