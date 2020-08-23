@@ -90,7 +90,6 @@ void app_main(void) {
     ESP_LOGI(WS_TAG, "Startup..");
     ESP_LOGI(WS_TAG, "Free memory: %d bytes", esp_get_free_heap_size());
     ESP_LOGI(WS_TAG, "IDF version: %s", esp_get_idf_version());
-    esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_level_set("WEBSOCKET_CLIENT", ESP_LOG_DEBUG);
     esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
 
