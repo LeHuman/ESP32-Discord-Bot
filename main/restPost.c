@@ -125,6 +125,7 @@ void http_rest_post_task(void *pvParameters) {
         esp_http_client_set_header(client, "Content-Type", "application/json");
         esp_http_client_set_header(client, "Authorization", authHeader);
         esp_http_client_set_post_field(client, postData.jsonContent, strlen(postData.jsonContent));
+        ESP_LOGI(HTTP_TAG, "Waiting for HTTP Client");
         esp_err_t err = esp_http_client_perform(client);
         if (err == ESP_OK) {
             ESP_LOGI(HTTP_TAG, "HTTP POST Status = %d, content_length = %d",
