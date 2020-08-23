@@ -71,7 +71,11 @@
     "jsmn-vk.h": "c",
     "esp_log.h": "c",
     "semphr.h": "c",
-    "xlocmes": "c"
+    "xlocmes": "c",
+    "locale": "c",
+    "http_header.h": "c",
+    "thread": "c",
+    "xloctime": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [
