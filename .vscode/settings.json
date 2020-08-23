@@ -75,7 +75,12 @@
     "locale": "c",
     "http_header.h": "c",
     "thread": "c",
-    "xloctime": "c"
+    "xloctime": "c",
+    "esp_system.h": "c",
+    "esp_event_legacy.h": "c",
+    "esp_wifi_types.h": "c",
+    "esp_wifi_types_private.h": "c",
+    "string_view": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [
