@@ -1,67 +1,104 @@
-menu "ESP_BOT_CONFIG"
+menu "ESP config"
 
-    config BOT_TOKEN
-        string "Discord Bot API Token"
-        default "BLANKITYBLANK"
-        help
-            Your discord bot token goes here
+    menu "Discord Bot"
 
-    config BOT_PREFIX
-        string "Discord Bot Prefix"
-        default "!Cast"
-        help
-            Prefix of a message to give the bot a command ( case insensitive )
+        config BOT_TOKEN
+            string "Discord Bot API Token"
+            default "APITOKENTHINGY"
+            help
+                Set your discord bot API token
 
-    config WEBSOCKET_BUFFER_SIZE
-        int "Websocket buffer size"
-        default 8192
-        help
-            Maximum size of the websocket message
+                Ensure that you do not accidently upload it to a public repository
 
-    config WEBSOCKET_QUEUE_SIZE
-        int "Websocket queue size"
-        default 3
-        help
-            Maximum number of websocket messages to store
+        config BOT_PREFIX
+            string "Discord Bot Prefix"
+            default "!Cast"
+            help
+                Set the required prefix of a message
 
-    config WEBSOCKET_URI
-        string "Websocket endpoint URI"
-        default "wss://gateway.discord.gg/?v=6&encoding=json"
-        help
-            URL of websocket endpoint
+                The bot will ignore any other messages
 
-    config WEBSOCKET_TIMEOUT_SEC
-        int "Websocket no data timeout"
-        default 10
-        help
-            The time it takes for the websocket to timeout when it is not receiving data
+        config BOT_CASE_SENSITIVE
+            bool "Bot is case sensitive"
+            default n
+            help
+                Set whether the bot is case sensitve
 
-    config ESP_WIFI_SSID
-        string "WiFi SSID"
-        default "Riveria-Network"
-        help
-            SSID (network name) for the station to connect to.
+    endmenu
 
-    config ESP_WIFI_PASSWORD
-        string "WiFi Password"
-        default "FZvfm^##A!*g4fWB"
-        help
-            WiFi password (WPA or WPA2) for the station to use.
+    menu "Websocket"
 
-    config ESP_MAXIMUM_RETRY
-        int "Maximum retry"
-        default 5
-        help
-            Set the Maximum retry to avoid station reconnecting to the AP unlimited when the AP is really inexistent.
+        config WEBSOCKET_BUFFER_SIZE
+            int "Websocket buffer size"
+            default 8192
+            help
+                Set the maximum size of a websocket message before it is split
 
-    config BLINK_GPIO
-        int "Blink GPIO number"
-        range 0 34
-        default 2
-        help
-            GPIO number (IOxx) to blink on and off.
+                Currently the bot does not support split messages, which is why it is this big
 
-            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
+        config WEBSOCKET_QUEUE_SIZE
+            int "Websocket queue size"
+            default 3
+            help
+                Set the maximum number of websocket messages to store
 
-            GPIOs 35-39 are input-only so cannot be used as outputs.
+        config WEBSOCKET_URI
+            string "Websocket endpoint URI"
+            default "wss://gateway.discord.gg/?v=6&encoding=json"
+            help
+                Set the URL of the websocket endpoint
+
+        config WEBSOCKET_TIMEOUT_SEC
+            int "Websocket no data timeout"
+            default 10
+            help
+                Set the time it takes for the websocket to timeout when it is not receiving data
+
+                This probably will only be used when the bot is having trouble connecting to the websocket
+
+    endmenu
+
+    menu "Wifi"
+
+        config ESP_WIFI_SSID
+            string "WiFi SSID"
+            default "Riveria-Network"
+            help
+                Set the SSID (network name) for the station to connect to
+
+        config ESP_WIFI_PASSWORD
+            string "WiFi Password"
+            default "FZvfm^##A!*g4fWB"
+            help
+                Set the WiFi password (WPA or WPA2) for the station to use
+
+        config ESP_MAXIMUM_RETRY
+            int "Maximum retry"
+            default 5
+            help
+                Set the maximum number of retries to avoid reconnecting to the AP when it really is inexistent.
+
+    endmenu
+
+    menu "LED"
+        config BLINK_ENABLE
+            bool "Enable LED Blinking"
+            default y
+            help
+                Set whether to enable led blinking on activity
+
+        config BLINK_GPIO
+            int "Blink GPIO number"
+            depends on BLINK_ENABLE
+            range 0 34
+            default 2
+            help
+                Set the GPIO number (IOxx) to blink on and off.
+
+                Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
+
+                GPIOs 35-39 are input-only so they cannot be used as outputs.
+
+    endmenu
+
 endmenu
