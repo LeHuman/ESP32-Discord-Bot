@@ -17,7 +17,7 @@
 #define HTTP_HOST "discordapp.com"
 #define HTTP_MAX_QUEUE CONFIG_WEBSOCKET_QUEUE_SIZE
 
-static const char *HTTP_TAG = "HTTP_CLIENT";
+static const char *HTTP_TAG = "HTTP";
 static const char *MSG_STR = "{\"content\":\"%s\",\"tts\":false,\"embed\":{\"title\":\"%s\",\"description\":\"%s\"}}";
 static const char *authHeader;
 static char local_response_buffer[HTTP_MAX_BUFFER] = {0};
@@ -108,6 +108,7 @@ void http_rest_post_task(void *pvParameters) {
 
         http_post_data_t postData;
         xQueueReceive(HTTP_POST_Queue, &postData, portMAX_DELAY); // Wait for new message in queue
+        ESP_LOGI(HTTP_TAG, "Payload received");
 
         esp_http_client_config_t config = {
             .host = HTTP_HOST,

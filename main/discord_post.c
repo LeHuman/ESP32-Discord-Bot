@@ -1,8 +1,11 @@
 #define REST_PATH "/api/channels/%s/messages" // TODO: add defines to Kconfig
 #define REST_AUTH_PREFIX "Bot "
 
+#include "esp_log.h"
 #include "http_post.c"
 #include <stdlib.h>
+
+static const char *REST_TAG = "Rest";
 
 extern void discord_rest_post(const char *content, const char *title, const char *description, const char *channel_id) {
     int length = strlen(REST_PATH) + strlen(channel_id) + 1;
@@ -21,13 +24,16 @@ extern void discord_rest_post(const char *content, const char *title, const char
 
     free(path_buf);
     free(jsonContent_buf);
+
+    ESP_LOGI(REST_TAG, "Queuing allocated message");
     xQueueSendToBack(HTTP_POST_Queue, &postData, 0);
 }
 
 extern QueueHandle_t discord_rest_init(const char *bot_token) {
+    ESP_LOGI(REST_TAG, "Initalizing discord POST");
     int length = strlen(REST_AUTH_PREFIX) + strlen(bot_token) + 1;
     char *authToken_buf = malloc(length);
     snprintf(authToken_buf, length, "%s%s", REST_AUTH_PREFIX, bot_token);
     authHeader = strdup(authToken_buf);
-    http_init(bot_token);
+    return http_init(bot_token);
 }
