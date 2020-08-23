@@ -14,7 +14,9 @@
 #include "esp_log.h"
 #include "esp_websocket_client.h"
 
+#ifdef CONFIG_BLINK_ENABLE
 #include "blink.c"
+#endif
 #include "bot.c"
 #include "wifi_interface.c"
 
@@ -34,15 +36,21 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
     switch (event_id) {
     case WEBSOCKET_EVENT_CONNECTED:
+#ifdef CONFIG_BLINK_ENABLE
         blink_mult(3);
+#endif
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_CONNECTED");
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:
+#ifdef CONFIG_BLINK_ENABLE
         blink_mult(2);
+#endif
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_DISCONNECTED");
         break;
     case WEBSOCKET_EVENT_DATA:
+#ifdef CONFIG_BLINK_ENABLE
         blink();
+#endif
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_DATA");
         if (data->data_len > 0) {
             if (xQueueSendToBack(message_length_queue, &data->data_len, 0) == errQUEUE_FULL) {
@@ -89,8 +97,9 @@ void app_main(void) {
     esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
 
     ESP_ERROR_CHECK(attempt_connect());
+#ifdef CONFIG_BLINK_ENABLE
     start_blink_task();
-
+#endif
     message_queue = xQueueCreate(MAX_MESSAGE_QUEUE, WEBSOCKET_BUFFER_SIZE);
     message_length_queue = xQueueCreate(MAX_MESSAGE_QUEUE, MESSAGE_LENGTH_SIZE);
     if (message_queue == NULL || message_length_queue == NULL) {
