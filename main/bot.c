@@ -18,25 +18,26 @@
 #include "discord_post.c"
 #include "heart.c"
 
-#define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
-#define BOT_TOKEN CONFIG_BOT_TOKEN
 #define JSMN_TOKEN_LENGTH 256
+#define BOT_TOKEN CONFIG_BOT_TOKEN
 #define BOT_PREFIX CONFIG_BOT_PREFIX
 #define BOT_PREFIX_LENGTH strlen(BOT_PREFIX)
 #define BOT_CASE_SENSITIVE CONFIG_BOT_CASE_SENSITIVE // TODO: implement case sensitive alt
-#define BOT_Mention_Pattern "<@%s>"
+#define BOT_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
 
 // TODO: add special "!help" case that prints what the bot's keyword prefix is, just in case
 
 typedef void (*BOT_payload_handler)(char *); // function that will send the bot payloads
 
-static const char *LOGIN_STR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP32\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
 static const char *BOT_TAG = "Bot";
 static const char *JSM_TAG = "JSMN";
 
+static const char *LOGIN_STR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP_HTTP_CLIENT\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
+static const char *BOT_MENTION_PATTERN = "<@%s>";
+
 jsmn_parser parser;
 jsmntok_t tkns[JSMN_TOKEN_LENGTH]; // IMPROVE: use dynamic token buffer
-static char data_ptr[WEBSOCKET_BUFFER_SIZE];
+static char data_ptr[BOT_BUFFER_SIZE];
 static int data_len = 0;
 
 enum payload_event { // What event did we receive
@@ -319,9 +320,9 @@ static void BOT_payload_task(void *pvParameters) {
                                         bot_message->author_id = strdup(data);
                                         free(data);
 
-                                        len = len + strlen(BOT_Mention_Pattern);
+                                        len = len + strlen(BOT_MENTION_PATTERN);
                                         *data = malloc(len);
-                                        snprintf(data, len, BOT_Mention_Pattern, bot_message->author_id);
+                                        snprintf(data, len, BOT_MENTION_PATTERN, bot_message->author_id);
                                         bot_message->author_mention = strdup(data);
                                         free(data);
                                         _k += 2;
@@ -447,7 +448,7 @@ extern void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_q
     BOT.seq = "null";
     BOT.event = EVENT_NULL;
 
-    http_init(BOT_TOKEN);
+    discord_rest_init(BOT_TOKEN);
 
     ESP_LOGI(BOT_TAG, "Starting BOT task");
     if (xTaskCreate(BOT_payload_task, "BOT task", 8192, NULL, 8, NULL) != pdPASS) {
