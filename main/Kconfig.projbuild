@@ -26,6 +26,22 @@ menu "ESP config"
 
     endmenu
 
+    menu "HTTP"
+
+        config HTTP_HOST
+            string "HTTP Hostname"
+            default "discordapp.com"
+            help
+                The host name that the HTTP Client should use for sending messages
+
+        config HTTP_MAX_BUFFER
+            int "Max HTTP Buffer size"
+            default 2048
+            help
+                Set the maximum size that the HTTP Client is able to receive
+
+    endmenu
+
     menu "Websocket"
 
         config WEBSOCKET_BUFFER_SIZE
