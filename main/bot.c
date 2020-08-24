@@ -15,16 +15,15 @@
 #include "esp_websocket_client.h"
 #include "jsmn.h"
 
-#include "discord_jsonBuilder.c"
-#include "discord_post.c"
+#include "discord.c"
 #include "heart.c"
 
 #define JSMN_TOKEN_LENGTH 256
 #define BOT_TOKEN CONFIG_BOT_TOKEN
 #define BOT_PREFIX CONFIG_BOT_PREFIX
 #define BOT_PREFIX_LENGTH strlen(BOT_PREFIX)
-#define BOT_CASE_SENSITIVE CONFIG_BOT_CASE_SENSITIVE
 #define BOT_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
+#define BOT_CASE_SENSITIVE CONFIG_BOT_CASE_SENSITIVE
 
 // TODO: implement case sensitive text option
 // TODO: add special "!help" case that prints what the bot's keyword prefix is, just in case
@@ -35,6 +34,7 @@ typedef void (*BOT_payload_handler)(char *); // function that will send the bot 
 static const char BOT_TAG[] = "Bot";
 static const char JSM_TAG[] = "JSMN";
 
+// No reason to build the login json
 static const char LOGIN_STR[] = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP_HTTP_CLIENT\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
 static const char BOT_MENTION_PATTERN[] = "<@%s>";
 
