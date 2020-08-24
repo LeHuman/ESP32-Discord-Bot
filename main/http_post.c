@@ -13,12 +13,11 @@
 
 #include "esp_http_client.h"
 
-#define HTTP_MAX_BUFFER 2048 // TODO: add defines to Kconfig
-#define HTTP_HOST "discordapp.com"
+#define HTTP_MAX_BUFFER CONFIG_HTTP_MAX_BUFFER
+#define HTTP_HOST CONFIG_HTTP_HOST
 #define HTTP_MAX_QUEUE CONFIG_WEBSOCKET_QUEUE_SIZE
 
-static const char *HTTP_TAG = "HTTP";
-static const char *MSG_STR = "{\"content\":\"%s\",\"tts\":false,\"embed\":{\"title\":\"%s\",\"description\":\"%s\"}}";
+static const char HTTP_TAG[] = "HTTP";
 static const char *authHeader;
 static char local_response_buffer[HTTP_MAX_BUFFER] = {0};
 static QueueHandle_t HTTP_POST_Queue;
@@ -28,7 +27,7 @@ typedef struct http_post_data {
     char *path;
 } http_post_data_t;
 
-inline static void clean_post_data(http_post_data_t *postData) {
+static inline void clean_post_data(http_post_data_t *postData) {
     free(postData->jsonContent);
     free(postData->path);
 }

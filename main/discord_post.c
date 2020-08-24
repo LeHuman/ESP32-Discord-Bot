@@ -1,11 +1,12 @@
-#define REST_PATH "/api/channels/%s/messages" // TODO: add defines to Kconfig
-#define REST_AUTH_PREFIX "Bot "
+#define REST_PATH CONFIG_REST_PATH_PATTERN
+#define REST_AUTH_PREFIX CONFIG_REST_AUTH_PREFIX
 
 #include "esp_log.h"
 #include "http_post.c"
 #include <stdlib.h>
 
-static const char *REST_TAG = "Rest";
+static const char REST_TAG[] = "Rest";
+static const char MSG_STR[] = "{\"content\":\"%s\",\"tts\":false,\"embed\":{\"title\":\"%s\",\"description\":\"%s\"}}";
 
 extern void discord_rest_post(const char *content, const char *title, const char *description, const char *channel_id) {
     int length = strlen(REST_PATH) + strlen(channel_id) + 1;

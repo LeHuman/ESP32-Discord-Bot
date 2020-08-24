@@ -4,8 +4,8 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 
-static const char *PM_TAG = "Heart";
-static const char *HB_STR = "{\"op\": 1,\"d\": \"%s\"}";
+static const char PM_TAG[] = "Heart";
+static const char HB_STR[] = "{\"op\": 1,\"d\": \"%s\"}";
 static TimerHandle_t pacemaker_handle;
 typedef void (*pacmaker_message_handle)(const char *, int len); // function that will send the heartbeat messages
 static pacmaker_message_handle message_handle;

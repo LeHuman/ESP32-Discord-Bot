@@ -26,7 +26,7 @@
 #define MAX_MESSAGE_QUEUE CONFIG_WEBSOCKET_QUEUE_SIZE
 #define MESSAGE_LENGTH_SIZE sizeof(int)
 
-static const char *WS_TAG = "WebSocket";
+static const char WS_TAG[] = "WebSocket";
 
 static esp_websocket_client_handle_t client;
 static QueueHandle_t message_queue;

@@ -15,9 +15,9 @@
 #include "esp_websocket_client.h"
 #include "jsmn.h"
 
+#include "discord_jsonBuilder.c"
 #include "discord_post.c"
 #include "heart.c"
-#include "json_builder.c"
 
 #define JSMN_TOKEN_LENGTH 256
 #define BOT_TOKEN CONFIG_BOT_TOKEN
@@ -32,29 +32,16 @@
 
 typedef void (*BOT_payload_handler)(char *); // function that will send the bot payloads
 
-static const char *BOT_TAG = "Bot";
-static const char *JSM_TAG = "JSMN";
+static const char BOT_TAG[] = "Bot";
+static const char JSM_TAG[] = "JSMN";
 
-static const char *LOGIN_STR = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP_HTTP_CLIENT\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
-static const char *BOT_MENTION_PATTERN = "<@%s>";
+static const char LOGIN_STR[] = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP_HTTP_CLIENT\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
+static const char BOT_MENTION_PATTERN[] = "<@%s>";
 
-jsmn_parser parser;
-jsmntok_t tkns[JSMN_TOKEN_LENGTH]; // IMPROVE: use dynamic token buffer
+static jsmn_parser parser;
+static jsmntok_t tkns[JSMN_TOKEN_LENGTH]; // IMPROVE: use dynamic token buffer
 static char data_ptr[BOT_BUFFER_SIZE];
 static int data_len = 0;
-
-static QueueHandle_t BOT_message_queue;
-static QueueHandle_t BOT_message_length_queue;
-static BOT_payload_handler BOT_payload_handle;
-static payload_event BOT_event = EVENT_NULL;
-static char *BOT_session_id = "null";
-static char *BOT_token = "null";
-static char *BOT_seq = "null"; // format as integer, "null" otherwise
-static int BOT_heartbeat_int = -1;
-static int BOT_lastOP = -1;
-static char *BOT_activeGuild = "null";
-static bool BOT_ready = false;
-static bool BOT_ACK = false;
 
 enum payload_event { // What event did we receive
     EVENT_NULL,
@@ -63,6 +50,18 @@ enum payload_event { // What event did we receive
     MESSAGE_CREATE,
 };
 typedef enum payload_event payload_event;
+
+static QueueHandle_t BOT_message_queue;
+static QueueHandle_t BOT_message_length_queue;
+static BOT_payload_handler BOT_payload_handle;
+static payload_event BOT_event = EVENT_NULL;
+static char *BOT_session_id = "null";
+// static char *BOT_token = "null";
+static char *BOT_seq = "null"; // format as integer, "null" otherwise
+static int BOT_lastOP = -1;
+// static char *BOT_activeGuild = "null";
+// static bool BOT_ready = false;
+static bool BOT_ACK = false;
 
 typedef struct BOT_basic_message {
     char *channel_id;
@@ -206,7 +205,7 @@ static int jsmn_get_token_size(jsmntok_t *token) {
     return result;
 }
 
-inline static int jsmn_get_total_size(jsmntok_t *token) {
+static inline int jsmn_get_total_size(jsmntok_t *token) {
     int res = jsmn_get_token_size(token + 1) + 1;
     return res;
 }
@@ -320,7 +319,7 @@ static void BOT_payload_task(void *pvParameters) {
                                         free(data);
 
                                         len = len + strlen(BOT_MENTION_PATTERN);
-                                        *data = malloc(len);
+                                        data = malloc(len);
                                         snprintf(data, len, BOT_MENTION_PATTERN, bot_message->author_id);
                                         bot_message->author_mention = strdup(data);
                                         free(data);
