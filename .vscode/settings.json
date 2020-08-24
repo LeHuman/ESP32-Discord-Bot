@@ -80,7 +80,9 @@
     "esp_event_legacy.h": "c",
     "esp_wifi_types.h": "c",
     "esp_wifi_types_private.h": "c",
-    "string_view": "c"
+    "string_view": "c",
+    "*.tcc": "c",
+    "string": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [

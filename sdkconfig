@@ -149,6 +149,20 @@ CONFIG_BOT_PREFIX="!Cast"
 # end of Discord Bot
 
 #
+# HTTP
+#
+CONFIG_HTTP_HOST="discordapp.com"
+CONFIG_HTTP_MAX_BUFFER=2048
+# end of HTTP
+
+#
+# REST POST
+#
+CONFIG_REST_PATH_PATTERN="/api/channels/%s/messages"
+CONFIG_REST_AUTH_PREFIX="Bot "
+# end of REST POST
+
+#
 # Websocket
 #
 CONFIG_WEBSOCKET_BUFFER_SIZE=8192
