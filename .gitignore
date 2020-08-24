@@ -1,4 +1,4 @@
 /build
 *.old
-sdkconfig
 /example
+sdkconfig
