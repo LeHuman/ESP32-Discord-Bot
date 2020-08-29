@@ -1,7 +1,3 @@
-#include "esp_event.h"
-#include "esp_system.h"
-#include "esp_wifi.h"
-#include "nvs_flash.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -11,9 +7,14 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
+#include "esp_event.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_websocket_client.h"
+#include "esp_wifi.h"
+
 #include "jsmn.h"
+#include "nvs_flash.h"
 
 #include "discord.c"
 #include "heart.c"
@@ -36,6 +37,7 @@ static const char JSM_TAG[] = "JSMN";
 
 // No reason to build the login json
 static const char LOGIN_STR[] = "{\"op\":2,\"d\":{\"token\":\"%s\",\"properties\":{\"$os\":\"FreeRTOS\",\"$browser\":\"ESP_HTTP_CLIENT\",\"$device\":\"ESP32\"},\"compress\":true,\"large_threshold\":50,\"shard\":[0,1],\"presence\":{\"status\":\"online\",\"afk\":false},\"guild_subscriptions\":true,\"intents\":512}}";
+static const char HB_STR[] = "{\"op\": 1,\"d\": \"%s\"}";
 static const char BOT_MENTION_PATTERN[] = "<@%s>";
 
 static jsmn_parser parser;
@@ -93,12 +95,12 @@ static void BOT_set_event(payload_event event) {
     BOT_event = event;
 }
 
-static void BOT_heartbeat_handle(const char *data, int len) {
+static void BOT_heartbeat_handle() {
     if (!BOT_ACK) {                                                                        // confirmation of heartbeat was not received in time
         ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting"); // TODO: throw error?
     } else {
-        BOT_ACK = false;                      // Expecting ACK to return and set to true before next heartbeat
-        BOT_send_payload(data, len, BOT_seq); // send with sequence number
+        BOT_ACK = false;                        // Expecting ACK to return and set to true before next heartbeat
+        BOT_send_payload(HB_STR, 128, BOT_seq); // send with sequence number
     }
 }
 

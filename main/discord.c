@@ -1,10 +1,11 @@
 #define REST_PATH CONFIG_REST_PATH_PATTERN
 #define REST_AUTH_PREFIX CONFIG_REST_AUTH_PREFIX
 
+#include <stdlib.h>
+
 #include "esp_log.h"
 #include "http_post.c"
 #include "jsonBuilder.c"
-#include <stdlib.h>
 
 static const char DISC_TAG[] = "Discord";
 static const char MSG_STR[] = "{\"content\":\"%s\",\"tts\":false,\"embed\":{\"title\":\"%s\",\"description\":\"%s\"}}";
@@ -96,4 +97,7 @@ extern char *discord_json_build_content(const char *content, const char *title, 
     }
 
     return json_finish(&f_json);
+}
+
+extern char *discord_json_build_payload(const char *op_code, const char *json_content) {
 }

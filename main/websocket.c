@@ -1,7 +1,3 @@
-#include "esp_event.h"
-#include "esp_system.h"
-#include "esp_wifi.h"
-#include "nvs_flash.h"
 #include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
@@ -12,7 +8,11 @@
 
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_websocket_client.h"
+#include "esp_wifi.h"
+
+#include "nvs_flash.h"
 
 #ifdef CONFIG_BLINK_ENABLE
 #include "blink.c"
