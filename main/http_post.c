@@ -69,10 +69,23 @@ void http_rest_post_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
-extern QueueHandle_t http_init(const char *authHeaderStr) {
+extern void http_queue_message(http_post_data_t *postData) {
+    ESP_LOGI(HTTP_TAG, "Queuing message");
+    xQueueSendToBack(HTTP_POST_Queue, postData, 0);
+}
+
+extern esp_err_t http_init(const char *authHeaderStr) {
     authHeader = authHeaderStr;
-    ESP_LOGI(HTTP_TAG, "Starting HTTP POST Task");
+    ESP_LOGI(HTTP_TAG, "Creating HTTP POST Queue");
     HTTP_POST_Queue = xQueueCreate(HTTP_MAX_QUEUE, sizeof(struct http_post_data)); // strings should be allocated then freed
-    xTaskCreate(http_rest_post_task, "HTTP POST", 4096, NULL, 16, NULL);
-    return HTTP_POST_Queue;
+    if (HTTP_POST_Queue == NULL) {
+        ESP_LOGE(HTTP_TAG, "Failed to create queue");
+        return ESP_FAIL;
+    }
+    if (xTaskCreate(http_rest_post_task, "HTTP POST", 4096, NULL, 16, NULL) != pdPASS) {
+        ESP_LOGE(HTTP_TAG, "Failed to start HTTP task");
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
 }

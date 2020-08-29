@@ -21,8 +21,13 @@ extern void pacemaker_update_interval(int heartbeat) {
     xTimerReset(pacemaker_handle, portMAX_DELAY);                                  // Reset the pacemaker
 }
 
-extern void pacemaker_init(pacemaker_message_handle pacemaker_message_handler) {
+extern esp_err_t pacemaker_init(pacemaker_message_handle pacemaker_message_handler) {
     ESP_LOGI(PM_TAG, "Starting Pacemaker timer");
     message_handle = pacemaker_message_handler;
     pacemaker_handle = xTimerCreate("Bot Pacemaker", portMAX_DELAY, pdFALSE, NULL, pacemaker_send_heartbeat);
+    if (pacemaker_handle == NULL) {
+        ESP_LOGI(PM_TAG, "Pacemaker failed to start timer");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }

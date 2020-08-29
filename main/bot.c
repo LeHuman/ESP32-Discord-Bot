@@ -54,12 +54,11 @@ enum payload_event { // What event did we receive
 typedef enum payload_event payload_event;
 
 static QueueHandle_t BOT_message_queue;
-static QueueHandle_t BOT_message_length_queue;
 static BOT_payload_handler BOT_payload_handle;
 static payload_event BOT_event = EVENT_NULL;
-static char *BOT_session_id = "null";
+static char *BOT_session_id;
 // static char *BOT_token = "null";
-static char *BOT_seq = "null"; // format as integer, "null" otherwise
+static char *BOT_seq; // format as integer, "null" otherwise
 static int BOT_lastOP = -1;
 // static char *BOT_activeGuild = "null";
 // static bool BOT_ready = false;
@@ -83,11 +82,13 @@ typedef struct BOT_basic_message {
 
 static void BOT_set_session_id(char *new_id) {
     ESP_LOGI(BOT_TAG, "New Session ID: %s", new_id);
+    free(BOT_session_id);
     BOT_session_id = strdup(new_id); // IMPROVE: Does this need to be freed?
 }
 
 static void BOT_set_sequence(char *new_seq) {
     ESP_LOGI(BOT_TAG, "Sequence: %s", new_seq);
+    free(BOT_seq);
     BOT_seq = strdup(new_seq);
 }
 
@@ -99,8 +100,9 @@ static void BOT_heartbeat_handle() {
     if (!BOT_ACK) {                                                                        // confirmation of heartbeat was not received in time
         ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting"); // TODO: throw error?
     } else {
-        BOT_ACK = false;                        // Expecting ACK to return and set to true before next heartbeat
-        BOT_send_payload(HB_STR, 128, BOT_seq); // send with sequence number
+        BOT_ACK = false; // Expecting ACK to return and set to true before next heartbeat
+        int len = strlen(HB_STR) + strlen(BOT_seq) + 1;
+        BOT_send_payload(HB_STR, len, BOT_seq); // send with sequence number
     }
 }
 
@@ -227,9 +229,8 @@ static bool BOT_prefix(char *const _String) {
 
 static void BOT_payload_task(void *pvParameters) {
     for (;;) {
-        ESP_LOGI(BOT_TAG, "Waiting for queue");                            // IMPROVE: Only use one queue for BOT task
-        xQueueReceive(BOT_message_queue, data_ptr, portMAX_DELAY);         // Wait for new message in queue
-        xQueueReceive(BOT_message_length_queue, &data_len, portMAX_DELAY); // Should not have to wait long, if at all, but here ya go ig
+        ESP_LOGI(BOT_TAG, "Waiting for queue");                    // IMPROVE: Only use one queue for BOT task
+        xQueueReceive(BOT_message_queue, data_ptr, portMAX_DELAY); // Wait for new message in queue
 
         jsmn_init(&parser); // IG we gotta reinit everytime?
         int r = jsmn_parse(&parser, data_ptr, data_len, tkns, JSMN_TOKEN_LENGTH);
@@ -428,7 +429,8 @@ static void BOT_payload_task(void *pvParameters) {
                 ESP_LOGI(BOT_TAG, "Author: %s", bot_message->author);
                 ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message->guild_id);
                 ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message->channel_id);
-                discord_rest_post(bot_message->author, bot_message->content, bot_message->author_mention, bot_message->channel_id);
+                discord_send_basic_embed(bot_message->author_mention, bot_message->content, bot_message->channel_id);
+                // discord_send_message(bot_message->author, bot_message->content, bot_message->author_mention, bot_message->channel_id);
                 free(bot_message);
                 // TODO: do somthing with new message
             }
@@ -437,16 +439,25 @@ static void BOT_payload_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
-extern void BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_queue_handle, QueueHandle_t message_length_queue_handle) {
+extern esp_err_t BOT_init(BOT_payload_handler payload_handle, QueueHandle_t message_queue_handle) {
     BOT_payload_handle = payload_handle;
     BOT_message_queue = message_queue_handle;
-    BOT_message_length_queue = message_length_queue_handle;
 
-    discord_rest_init(BOT_TOKEN);
+    ESP_LOGI(BOT_TAG, "Initalizing vars");
+    BOT_session_id = strdup("null");
+    BOT_seq = strdup("null");
+
+    ESP_LOGI(BOT_TAG, "Initalizing discord rest api");
+    ESP_ERROR_CHECK(discord_init(BOT_TOKEN));
 
     ESP_LOGI(BOT_TAG, "Starting BOT task");
     if (xTaskCreate(BOT_payload_task, "BOT task", 8192, NULL, 8, NULL) != pdPASS) {
-        ESP_LOGE(BOT_TAG, "Failed to start BOT task!");
+        ESP_LOGE(BOT_TAG, "Failed to start BOT task");
+        return ESP_FAIL;
     }
-    pacemaker_init(BOT_heartbeat_handle);
+
+    ESP_LOGI(BOT_TAG, "Initalizing gateway pacemaker");
+    ESP_ERROR_CHECK(pacemaker_init(BOT_heartbeat_handle));
+
+    return ESP_OK;
 }
