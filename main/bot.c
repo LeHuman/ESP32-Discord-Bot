@@ -142,34 +142,6 @@ static void BOT_new_event(char *event) { // TODO: set all the events that we car
     }
 }
 
-static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
-    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start && strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
-        return true;
-    }
-    return false;
-}
-
-// static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
-//     // if (tok->type != JSMN_STRING) {
-//     //     ESP_LOGD(JSM_TAG, "Compare: Type failed");
-//     //     return false;
-//     // }
-//     ESP_LOGD(JSM_TAG, "%s %d %d", s, tok->type, (int)strlen(s));
-//     if ((int)strlen(s) != tok->end - tok->start) {
-//         ESP_LOGD(JSM_TAG, "Compare: length failed %d", tok->end - tok->start);
-//         return false;
-//     }
-//     if (strncmp(json + tok->start, s, tok->end - tok->start) != 0) {
-//         ESP_LOGD(JSM_TAG, "Compare: compare failed");
-//         return false;
-//     }
-//     return true;
-// }
-
-static bool json_null(const char *json, jsmntok_t *tok) {
-    return strncmp(json + tok->start, "null", tok->end - tok->start) == 0;
-}
-
 static void BOT_op_code(int op) {
     BOT_lastOP = op;
     switch (op) {
@@ -210,6 +182,17 @@ static void BOT_op_code(int op) {
     }
 }
 
+static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
+    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start && strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+        return true;
+    }
+    return false;
+}
+
+static bool json_null(const char *json, jsmntok_t *tok) {
+    return strncmp(json + tok->start, "null", tok->end - tok->start) == 0;
+}
+
 static int jsmn_get_token_size(jsmntok_t *token) {
     unsigned int i, j;
     jsmntok_t *key;
@@ -245,13 +228,12 @@ static inline int jsmn_get_total_size(jsmntok_t *token) {
     return res;
 }
 
-static bool BOT_prefix(char *const _String) {
+static bool string_match(char *const string, char *const stringMaster) {
     int i;
     bool val = true;
-    for (i = 0; i < BOT_PREFIX_LENGTH; i++) {
-        // ESP_LOGD(BOT_TAG, "MATCH %c %c", tolower(*(_String + i)), tolower(*(BOT_PREFIX + i)));
+    for (i = 0; i < strlen(stringMaster); i++) {
 #ifdef BOT_CASE_SENSITIVE
-        if (*(_String + i) != *(BOT_PREFIX + i)) {
+        if (*(string + i) != *(BOT_PREFIX + i)) {
 #else
         if (tolower(*(_String + i)) != tolower(*(BOT_PREFIX + i))) {
 #endif
@@ -259,7 +241,6 @@ static bool BOT_prefix(char *const _String) {
             break;
         }
     }
-    return val;
 }
 
 static void BOT_payload_task(void *pvParameters) {
@@ -270,7 +251,10 @@ static void BOT_payload_task(void *pvParameters) {
 
         jsmn_init(&parser); // IG we gotta reinit everytime?
         int r = jsmn_parse(&parser, data_ptr, data_len, tkns, JSMN_TOKEN_LENGTH);
-        int help = 0; // 1=send help str 2=send basic help str
+
+#ifdef CONFIG_BOT_BASIC_HELP
+        bool basic_help = false; // send basic help
+#endif
 
         ESP_LOGD(BOT_TAG, "Received=%.*s Size=%d", data_len, data_ptr, data_len);
         int msg_left = uxQueueMessagesWaiting(BOT_message_queue);
@@ -386,15 +370,11 @@ static void BOT_payload_task(void *pvParameters) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
                                 char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
-                                if (!BOT_prefix(data)) { // Void if prefix does not exist
-#ifdef CONFIG_BOT_HELP
-                                    if (strcmp(data, "!help") == 0) { // IMPROVE: case insensitive !help
-                                        ESP_LOGI(BOT_TAG, "!help detected, sending basic help string");
+                                if (!string_match(data, BOT_PREFIX)) { // Void if prefix does not exist
 #ifdef CONFIG_BOT_BASIC_HELP
-                                        help = 2;
-#else
-                                        help = 1;
-#endif
+                                    if (string_match(data, "!help")) {
+                                        ESP_LOGI(BOT_TAG, "!help detected, queueing basic help string");
+                                        basic_help = true;
                                         bot_message->content = strdup(data);
                                         free(data);
                                         k += 2;
@@ -402,7 +382,7 @@ static void BOT_payload_task(void *pvParameters) {
                                     } else {
 #endif
                                         ESP_LOGW(BOT_TAG, "Message does not have prefix, ignoring");
-#ifdef CONFIG_BOT_HELP
+#ifdef CONFIG_BOT_BASIC_HELP
                                     }
 #endif
                                     voided = true;
@@ -492,25 +472,16 @@ static void BOT_payload_task(void *pvParameters) {
                     ESP_LOGI(BOT_TAG, "Author: %s", bot_message->author);
                     ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message->guild_id);
                     ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message->channel_id);
-#ifdef CONFIG_BOT_HELP
-                    switch (help) {
-                    case 1:
-                        discord_send_text_message(BOT_HELP_STRING, bot_message->channel_id);
-                        break;
 #ifdef CONFIG_BOT_BASIC_HELP
-                    case 2:
+                    if (basic_help) {
                         discord_send_text_message(BOT_BASIC_HELP, bot_message->channel_id);
-                        break;
+                        free(bot_message);
+                    } else {
 #endif
-                    default:
-#endif
-                        // TODO: do somthing with new message
-                        discord_send_basic_embed(bot_message->content, bot_message->author_mention, bot_message->channel_id);
-                        break;
-#ifdef CONFIG_BOT_HELP
+                        // bot_message must be freed from this point
+#ifdef CONFIG_BOT_BASIC_HELP
                     }
 #endif
-                    free(bot_message);
                 }
             } else {
                 free(bot_message);
