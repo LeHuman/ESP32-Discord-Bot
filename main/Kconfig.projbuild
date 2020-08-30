@@ -45,6 +45,19 @@ menu "ESP config"
 
                 Otherwise, !help just prints out the entire help string
 
+        config BOT_HELP_STRING
+            string "The string of custom commands"
+            depends on BOT_HELP
+            default "echo: echo a message\\nping: test delay"
+            help
+                Each custom command that should be printed when a someone is asking for help
+
+                Every command should be seperated by "\\n" on a single line
+
+                Eg. echo: echo a message\\nstatus: check bot status
+
+                This bot will not check if this help string is valid, you must have at least one custom command
+
     endmenu
 
     menu "HTTP"

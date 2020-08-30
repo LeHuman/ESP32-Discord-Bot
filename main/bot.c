@@ -25,6 +25,7 @@
 #define BOT_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
 #define BOT_CASE_SENSITIVE CONFIG_BOT_CASE_SENSITIVE
 #ifdef CONFIG_BOT_HELP
+#define BOT_HELP_STRING "Use any of the following after " BOT_PREFIX "\\n```help: Show this message\\n" CONFIG_BOT_HELP_STRING "```"
 #ifdef CONFIG_BOT_BASIC_HELP
 #define BOT_BASIC_HELP "If you need my help, use the following command\\n```" BOT_PREFIX " help```"
 #endif
@@ -491,9 +492,10 @@ static void BOT_payload_task(void *pvParameters) {
                     ESP_LOGI(BOT_TAG, "Author: %s", bot_message->author);
                     ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message->guild_id);
                     ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message->channel_id);
+#ifdef CONFIG_BOT_HELP
                     switch (help) {
                     case 1:
-                        //TODO: help string
+                        discord_send_text_message(BOT_HELP_STRING, bot_message->channel_id);
                         break;
 #ifdef CONFIG_BOT_BASIC_HELP
                     case 2:
@@ -501,10 +503,13 @@ static void BOT_payload_task(void *pvParameters) {
                         break;
 #endif
                     default:
+#endif
                         // TODO: do somthing with new message
                         discord_send_basic_embed(bot_message->content, bot_message->author_mention, bot_message->channel_id);
                         break;
+#ifdef CONFIG_BOT_HELP
                     }
+#endif
                     free(bot_message);
                 }
             } else {
