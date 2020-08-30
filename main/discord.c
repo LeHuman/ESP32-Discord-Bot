@@ -1,5 +1,6 @@
 #define REST_PATH CONFIG_REST_PATH_PATTERN
 #define REST_AUTH_PREFIX CONFIG_REST_AUTH_PREFIX
+#define REST_COLOR CONFIG_BOT_COLOR
 
 #include <stdlib.h>
 
@@ -44,8 +45,7 @@ static char *discord_json_build_content(const char *content, const char *title, 
     }
 
     if (title != NULL || description != NULL || author != NULL || footer != NULL) {
-        json_key(&f_json, "embeds");
-        json_open_array(&f_json);
+        json_key(&f_json, "embed");
         json_open_list(&f_json);
 
         if (title != NULL) {
@@ -82,8 +82,12 @@ static char *discord_json_build_content(const char *content, const char *title, 
             json_close_list(&f_json);
         }
 
+        json_key(&f_json, "color");
+        char str[12];
+        sprintf(str, "%d", REST_COLOR);
+        json_value(&f_json, str);
+
         json_close_list(&f_json);
-        json_close_array(&f_json);
     }
 
     return json_finish(&f_json);

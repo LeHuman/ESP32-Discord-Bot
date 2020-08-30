@@ -10,7 +10,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include "esp_websocket_client.h"
 #include "esp_wifi.h"
 
 #include "jsmn.h"
@@ -25,9 +24,13 @@
 #define BOT_PREFIX_LENGTH strlen(BOT_PREFIX)
 #define BOT_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
 #define BOT_CASE_SENSITIVE CONFIG_BOT_CASE_SENSITIVE
+#ifdef CONFIG_BOT_HELP
+#ifdef CONFIG_BOT_BASIC_HELP
+#define BOT_BASIC_HELP "If you need my help, use the following command\\n```" BOT_PREFIX " help```"
+#endif
+#endif
 
 // TODO: implement case sensitive text option
-// TODO: add special "!help" case that prints what the bot's keyword prefix is, just in case
 // TODO: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
 
 typedef void (*BOT_payload_handler)(char *); // function that will send the bot payloads
@@ -43,7 +46,8 @@ static const char BOT_MENTION_PATTERN[] = "<@%s>";
 static jsmn_parser parser;
 static jsmntok_t tkns[JSMN_TOKEN_LENGTH]; // IMPROVE: use dynamic token buffer
 static char data_ptr[BOT_BUFFER_SIZE];
-static int data_len = 0;
+static char payload_ptr[BOT_BUFFER_SIZE]; // IMPROVE: use semaphore instead of double buffer
+SemaphoreHandle_t xPayload_sema;
 
 enum payload_event { // What event did we receive
     EVENT_NULL,
@@ -73,11 +77,15 @@ typedef struct BOT_basic_message {
     char *content;
 } BOT_basic_message_t;
 
-#define BOT_send_payload(data, len, ...)            \
-    {                                               \
-        snprintf(data_ptr, len, data, __VA_ARGS__); \
-        vTaskDelay(pdMS_TO_TICKS(550));             \
-        BOT_payload_handle(data_ptr);               \
+#define BOT_send_payload(data, len, ...)               \
+    {                                                  \
+        ESP_LOGD(BOT_TAG, "Payload waiting");          \
+        vTaskDelay(pdMS_TO_TICKS(550));                \
+        xSemaphoreTake(xPayload_sema, portMAX_DELAY);  \
+        snprintf(payload_ptr, len, data, __VA_ARGS__); \
+        BOT_payload_handle(payload_ptr);               \
+        xSemaphoreGive(xPayload_sema);                 \
+        ESP_LOGD(BOT_TAG, "Payload done");             \
     }
 
 static void BOT_set_session_id(char *new_id) {
@@ -96,24 +104,27 @@ static void BOT_set_event(payload_event event) {
     BOT_event = event;
 }
 
-static void BOT_heartbeat_handle() {
-    if (!BOT_ACK) {                                                                        // confirmation of heartbeat was not received in time
-        ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting"); // TODO: throw error?
+static void BOT_heartbeat_task(void *pvParameters) {
+    if (BOT_ACK == false) { // confirmation of heartbeat was not received in time
+        ESP_LOGE(BOT_TAG, "Did not receive heartbeat confirmation in time, reconnecting");
+        esp_restart();
     } else {
         BOT_ACK = false; // Expecting ACK to return and set to true before next heartbeat
         int len = strlen(HB_STR) + strlen(BOT_seq) + 1;
         BOT_send_payload(HB_STR, len, BOT_seq); // send with sequence number
     }
+    vTaskDelete(NULL);
 }
 
 static void BOT_set_heartbeat_int(int beat) {
-    pacemaker_update_interval(beat);
     BOT_ACK = true;
+    pacemaker_update_interval(beat);
 }
 
-static void BOT_do_login() {
-    ESP_LOGI(BOT_TAG, "Logging in...");
+static void BOT_do_login_task(void *pvParameters) {
+    ESP_LOGI(BOT_TAG, "Sending login info");
     BOT_send_payload(LOGIN_STR, 480, BOT_TOKEN);
+    vTaskDelete(NULL);
 }
 
 static void BOT_new_event(char *event) { // TODO: set all the events that we care about
@@ -137,6 +148,23 @@ static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
     return false;
 }
 
+// static bool json_equal(const char *json, jsmntok_t *tok, const char *s) {
+//     // if (tok->type != JSMN_STRING) {
+//     //     ESP_LOGD(JSM_TAG, "Compare: Type failed");
+//     //     return false;
+//     // }
+//     ESP_LOGD(JSM_TAG, "%s %d %d", s, tok->type, (int)strlen(s));
+//     if ((int)strlen(s) != tok->end - tok->start) {
+//         ESP_LOGD(JSM_TAG, "Compare: length failed %d", tok->end - tok->start);
+//         return false;
+//     }
+//     if (strncmp(json + tok->start, s, tok->end - tok->start) != 0) {
+//         ESP_LOGD(JSM_TAG, "Compare: compare failed");
+//         return false;
+//     }
+//     return true;
+// }
+
 static bool json_null(const char *json, jsmntok_t *tok) {
     return strncmp(json + tok->start, "null", tok->end - tok->start) == 0;
 }
@@ -154,13 +182,15 @@ static void BOT_op_code(int op) {
         break;
     case 7:
         ESP_LOGI(BOT_TAG, "Received op code: Reconnect");
+        esp_restart();
         break;
     case 9:
         ESP_LOGI(BOT_TAG, "Received op code: Invalid Session");
+        esp_restart();
         break;
     case 10:
         ESP_LOGI(BOT_TAG, "Received op code: Hello");
-        BOT_do_login();
+        xTaskCreate(BOT_do_login_task, "BOTLOGIN", 2048, NULL, 12, NULL);
         break;
     case 11:
         ESP_LOGI(BOT_TAG, "Received op code: Heartbeat ACK");
@@ -218,8 +248,12 @@ static bool BOT_prefix(char *const _String) {
     int i;
     bool val = true;
     for (i = 0; i < BOT_PREFIX_LENGTH; i++) {
-        ESP_LOGD(BOT_TAG, "MATCH %c %c", tolower(*(_String + i)), tolower(*(BOT_PREFIX + i)));
+        // ESP_LOGD(BOT_TAG, "MATCH %c %c", tolower(*(_String + i)), tolower(*(BOT_PREFIX + i)));
+#ifdef BOT_CASE_SENSITIVE
+        if (*(_String + i) != *(BOT_PREFIX + i)) {
+#else
         if (tolower(*(_String + i)) != tolower(*(BOT_PREFIX + i))) {
+#endif
             val = false;
             break;
         }
@@ -231,11 +265,13 @@ static void BOT_payload_task(void *pvParameters) {
     for (;;) {
         ESP_LOGI(BOT_TAG, "Waiting for queue");                    // IMPROVE: Only use one queue for BOT task
         xQueueReceive(BOT_message_queue, data_ptr, portMAX_DELAY); // Wait for new message in queue
+        int data_len = strlen(data_ptr);
 
         jsmn_init(&parser); // IG we gotta reinit everytime?
         int r = jsmn_parse(&parser, data_ptr, data_len, tkns, JSMN_TOKEN_LENGTH);
+        int help = 0; // 1=send help str 2=send basic help str
 
-        ESP_LOGI(BOT_TAG, "Received=%.*s Size=%d", data_len, data_ptr, data_len);
+        ESP_LOGD(BOT_TAG, "Received=%.*s Size=%d", data_len, data_ptr, data_len);
         int msg_left = uxQueueMessagesWaiting(BOT_message_queue);
         if (msg_left > 0)
             ESP_LOGI(BOT_TAG, "Messages queued: %d", msg_left);
@@ -261,21 +297,25 @@ static void BOT_payload_task(void *pvParameters) {
                     BOT_new_event(event);
                     free(event);
                     i++; // Skip tokens that we just read
-                } else if (json_equal(data_ptr, &tkns[i], "s") && !json_null(data_ptr, &tkns[i + 1])) {
+                } else if (json_equal(data_ptr, &tkns[i], "s")) {
                     ESP_LOGD(BOT_TAG, "Get sequence");
-                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char *new_seq = malloc(len);
-                    snprintf(new_seq, len, (char *)(data_ptr + tkns[i + 1].start));
-                    BOT_set_sequence(new_seq);
-                    free(new_seq);
+                    if (!json_null(data_ptr, &tkns[i + 1])) {
+                        int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
+                        char *new_seq = malloc(len);
+                        snprintf(new_seq, len, (char *)(data_ptr + tkns[i + 1].start));
+                        BOT_set_sequence(new_seq);
+                        free(new_seq);
+                    }
                     i++; // Skip tokens that we just read
-                } else if (json_equal(data_ptr, &tkns[i], "op") && !json_null(data_ptr, &tkns[i + 1])) {
+                } else if (json_equal(data_ptr, &tkns[i], "op")) {
                     ESP_LOGD(BOT_TAG, "Get op code");
-                    int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
-                    char *opStr = malloc(len);
-                    snprintf(opStr, len, (char *)(data_ptr + tkns[i + 1].start));
-                    BOT_op_code(atoi(opStr));
-                    free(opStr);
+                    if (!json_null(data_ptr, &tkns[i + 1])) {
+                        int len = (tkns[i + 1].end - tkns[i + 1].start) + 1;
+                        char *opStr = malloc(len);
+                        snprintf(opStr, len, (char *)(data_ptr + tkns[i + 1].start));
+                        BOT_op_code(atoi(opStr));
+                        free(opStr);
+                    }
                     i++; // Skip tokens that we just read
                 } else if (json_equal(data_ptr, &tkns[i], "d")) {
 
@@ -343,16 +383,29 @@ static void BOT_payload_task(void *pvParameters) {
                             } else if (json_equal(data_ptr, &tkns[k], "content")) { // Only accept prefixed content
                                 ESP_LOGD(BOT_TAG, "data: content");
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                if (len < BOT_PREFIX_LENGTH) {
-                                    ESP_LOGW(BOT_TAG, "Message is too small, ignoring");
-                                    voided = true;
-                                    continue;
-                                }
                                 char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
                                 if (!BOT_prefix(data)) { // Void if prefix does not exist
-                                    ESP_LOGW(BOT_TAG, "Message does not have prefix, ignoring");
+#ifdef CONFIG_BOT_HELP
+                                    if (strcmp(data, "!help") == 0) { // IMPROVE: case insensitive !help
+                                        ESP_LOGI(BOT_TAG, "!help detected, sending basic help string");
+#ifdef CONFIG_BOT_BASIC_HELP
+                                        help = 2;
+#else
+                                        help = 1;
+#endif
+                                        bot_message->content = strdup(data);
+                                        free(data);
+                                        k += 2;
+                                        continue;
+                                    } else {
+#endif
+                                        ESP_LOGW(BOT_TAG, "Message does not have prefix, ignoring");
+#ifdef CONFIG_BOT_HELP
+                                    }
+#endif
                                     voided = true;
+                                    free(data);
                                     continue;
                                 }
                                 bot_message->content = strdup(data + BOT_PREFIX_LENGTH); // Allocate space while ignoring the prefix
@@ -386,33 +439,41 @@ static void BOT_payload_task(void *pvParameters) {
                             }
                             break;
                         case EVENT_GUILD_OBJ:
-                            if (json_equal(data_ptr, &tkns[k], "name") && !json_null(data_ptr, &tkns[k + 1])) {
-                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char *name = malloc(len);
-                                snprintf(name, len, (char *)(data_ptr + tkns[k + 1].start));
+                            if (json_equal(data_ptr, &tkns[k], "name")) {
+                                if (!json_null(data_ptr, &tkns[k + 1])) {
+                                    int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                    char *name = malloc(len);
+                                    snprintf(name, len, (char *)(data_ptr + tkns[k + 1].start));
+                                    free(name);
+                                }
                                 k += jsmn_get_total_size(&tkns[k]);
-                                free(name);
                             }
                             break;
                         case EVENT_READY:
-                            if (json_equal(data_ptr, &tkns[k], "session_id") && !json_null(data_ptr, &tkns[k + 1])) {
-                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char *new_id = malloc(len);
-                                snprintf(new_id, len, (char *)(data_ptr + tkns[k + 1].start));
-                                BOT_set_session_id(new_id);
-                                free(new_id);
+                            if (json_equal(data_ptr, &tkns[k], "session_id")) {
+                                if (!json_null(data_ptr, &tkns[k + 1])) {
+                                    int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                    char *new_id = malloc(len);
+                                    snprintf(new_id, len, (char *)(data_ptr + tkns[k + 1].start));
+                                    BOT_set_session_id(new_id);
+                                    free(new_id);
+                                }
                                 k += jsmn_get_total_size(&tkns[k]);
                             }
                             break;
                         default:
-                            if (json_equal(data_ptr, &tkns[k], "heartbeat_interval") && !json_null(data_ptr, &tkns[k + 1])) {
-                                int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
-                                char *beatStr = malloc(len);
-                                snprintf(beatStr, len, (char *)(data_ptr + tkns[k + 1].start));
-                                int beat = atoi(beatStr);
-                                BOT_set_heartbeat_int(beat);
-                                free(beatStr);
+                            if (json_equal(data_ptr, &tkns[k], "heartbeat_interval")) {
+                                if (!json_null(data_ptr, &tkns[k + 1])) {
+                                    int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
+                                    char *beatStr = malloc(len);
+                                    snprintf(beatStr, len, (char *)(data_ptr + tkns[k + 1].start));
+                                    int beat = atoi(beatStr);
+                                    BOT_set_heartbeat_int(beat);
+                                    free(beatStr);
+                                }
                                 k += jsmn_get_total_size(&tkns[k]);
+                            } else {
+                                k++;
                             }
                             break;
                         }
@@ -421,18 +482,33 @@ static void BOT_payload_task(void *pvParameters) {
                     i += jsmn_get_total_size(&tkns[i]); // Skip the tokens that were in the data block
                 }
             }
-            if (voided || bot_message->content == NULL) {
-                ESP_LOGW(BOT_TAG, "Last message was voided or empty");
-                free(bot_message);
+            if (BOT_event == MESSAGE_CREATE) {
+                if (voided || bot_message->content == NULL) {
+                    ESP_LOGW(BOT_TAG, "Last message was voided or empty");
+                    free(bot_message);
+                } else {
+                    ESP_LOGI(BOT_TAG, "Message: %s", bot_message->content);
+                    ESP_LOGI(BOT_TAG, "Author: %s", bot_message->author);
+                    ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message->guild_id);
+                    ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message->channel_id);
+                    switch (help) {
+                    case 1:
+                        //TODO: help string
+                        break;
+#ifdef CONFIG_BOT_BASIC_HELP
+                    case 2:
+                        discord_send_text_message(BOT_BASIC_HELP, bot_message->channel_id);
+                        break;
+#endif
+                    default:
+                        // TODO: do somthing with new message
+                        discord_send_basic_embed(bot_message->content, bot_message->author_mention, bot_message->channel_id);
+                        break;
+                    }
+                    free(bot_message);
+                }
             } else {
-                ESP_LOGI(BOT_TAG, "Message: %s", bot_message->content);
-                ESP_LOGI(BOT_TAG, "Author: %s", bot_message->author);
-                ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message->guild_id);
-                ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message->channel_id);
-                discord_send_basic_embed(bot_message->author_mention, bot_message->content, bot_message->channel_id);
-                // discord_send_message(bot_message->author, bot_message->content, bot_message->author_mention, bot_message->channel_id);
                 free(bot_message);
-                // TODO: do somthing with new message
             }
         }
     }
@@ -446,6 +522,8 @@ extern esp_err_t BOT_init(BOT_payload_handler payload_handle, QueueHandle_t mess
     ESP_LOGI(BOT_TAG, "Initalizing vars");
     BOT_session_id = strdup("null");
     BOT_seq = strdup("null");
+    xPayload_sema = xSemaphoreCreateBinary();
+    xSemaphoreGive(xPayload_sema);
 
     ESP_LOGI(BOT_TAG, "Initalizing discord rest api");
     ESP_ERROR_CHECK(discord_init(BOT_TOKEN));
@@ -457,7 +535,7 @@ extern esp_err_t BOT_init(BOT_payload_handler payload_handle, QueueHandle_t mess
     }
 
     ESP_LOGI(BOT_TAG, "Initalizing gateway pacemaker");
-    ESP_ERROR_CHECK(pacemaker_init(BOT_heartbeat_handle));
+    ESP_ERROR_CHECK(pacemaker_init(BOT_heartbeat_task));
 
     return ESP_OK;
 }

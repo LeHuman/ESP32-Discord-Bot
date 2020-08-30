@@ -18,11 +18,32 @@ menu "ESP config"
 
                 The bot will ignore any other messages
 
+        config BOT_COLOR
+            hex "Discord Bot Hex Color"
+            default 0xba51f7
+            help
+                Color hex that the bot uses for embedded messages
+
         config BOT_CASE_SENSITIVE
             bool "Bot is case sensitive"
             default n
             help
                 Set whether the bot is case sensitve
+
+        config BOT_HELP
+            bool "Enable inbuilt commands to send help strings"
+            default y
+            help
+                Bot is able to respond to !help or !bot_prefix help
+
+        config BOT_BASIC_HELP
+            bool "Send a basic help string when !help is received"
+            depends on BOT_HELP
+            default y
+            help
+                Set whether !help returns the exact command to get the actual help string
+
+                Otherwise, !help just prints out the entire help string
 
     endmenu
 

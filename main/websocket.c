@@ -9,7 +9,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include "esp_websocket_client.h"
 #include "esp_wifi.h"
 
 #include "nvs_flash.h"
@@ -17,6 +16,7 @@
 #ifdef CONFIG_BLINK_ENABLE
 #include "blink.c"
 #endif
+#include "esp_websocket_client_mod.c"
 
 #define NO_DATA_TIMEOUT_SEC CONFIG_WEBSOCKET_TIMEOUT_SEC // TODO: implement websocket timeout
 #define WEBSOCKET_BUFFER_SIZE CONFIG_WEBSOCKET_BUFFER_SIZE
@@ -49,12 +49,14 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 #endif
         ESP_LOGI(WS_TAG, "WEBSOCKET_EVENT_DATA");
         if (data->data_len > 0) {
-            char *msg = calloc(1, (data->data_len) + 1);
-            snprintf(msg, data->data_len, data->data_ptr);
+            char *msg = calloc(1, 1 + (data->data_len));
+            snprintf(msg, 1 + (data->data_len), data->data_ptr);
             if (xQueueSendToBack(message_queue, msg, 0) == errQUEUE_FULL) {
                 ESP_LOGE(WS_TAG, "Message queue is full, unable to receive last message");
             }
             free(msg);
+        } else {
+            ESP_LOGW(WS_TAG, "Data received was of length 0");
         }
         break;
     case WEBSOCKET_EVENT_ERROR:
@@ -65,7 +67,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 
 extern void websocket_send_text(char *data) {
     if (esp_websocket_client_is_connected(client)) {
-        ESP_LOGI(WS_TAG, "Sending %s", data);
+        ESP_LOGD(WS_TAG, "Sending %s", data);
         esp_websocket_client_send_text(client, data, strlen(data), portMAX_DELAY);
     }
 }

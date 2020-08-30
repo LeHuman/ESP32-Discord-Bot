@@ -48,6 +48,9 @@ void http_rest_post_task(void *pvParameters) {
 
         esp_http_client_handle_t client = esp_http_client_init(&config);
 
+        ESP_LOGI(HTTP_TAG, "Delaying message");
+        vTaskDelay(pdMS_TO_TICKS(550));
+
         // POST
         esp_http_client_set_method(client, HTTP_METHOD_POST);
         esp_http_client_set_header(client, "Content-Type", "application/json");
@@ -56,9 +59,16 @@ void http_rest_post_task(void *pvParameters) {
         ESP_LOGI(HTTP_TAG, "Waiting for HTTP Client");
         esp_err_t err = esp_http_client_perform(client);
         if (err == ESP_OK) {
+            int len = esp_http_client_get_content_length(client);
             ESP_LOGI(HTTP_TAG, "HTTP POST Status = %d, content_length = %d",
                      esp_http_client_get_status_code(client),
-                     esp_http_client_get_content_length(client));
+                     len);
+            if (len > 0) {
+                char *response = malloc(len);
+                esp_http_client_read_response(client, response, len);
+                ESP_LOGI(HTTP_TAG, "Received=%.*s", len, response);
+                free(response);
+            }
         } else {
             ESP_LOGE(HTTP_TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
         }
@@ -70,7 +80,7 @@ void http_rest_post_task(void *pvParameters) {
 }
 
 extern void http_queue_message(http_post_data_t *postData) {
-    ESP_LOGI(HTTP_TAG, "Queuing message");
+    ESP_LOGI(HTTP_TAG, "Queuing message: %s", postData->jsonContent);
     xQueueSendToBack(HTTP_POST_Queue, postData, 0);
 }
 
