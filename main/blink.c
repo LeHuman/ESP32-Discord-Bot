@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
+#include "esp_log.h"
 #include <stdio.h>
 
 #define BLINK_GPIO CONFIG_BLINK_GPIO

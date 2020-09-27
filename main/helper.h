@@ -18,6 +18,7 @@ static bool string_match(const char *string, const char *stringMaster) {
             break;
         }
     }
+    return val;
 }
 
 static void string_strip(char *string) {

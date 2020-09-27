@@ -82,7 +82,8 @@
     "esp_wifi_types_private.h": "c",
     "string_view": "c",
     "*.tcc": "c",
-    "string": "c"
+    "string": "c",
+    "discord.h": "c"
 },
 "idf.portWin": "COM4",
 "cSpell.words": [

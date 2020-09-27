@@ -245,7 +245,7 @@ static void BOT_payload_task(void *pvParameters) {
             }
         } else {
             BOT_basic_message_t bot_message;
-            msg_set_content(bot_message, NULL);
+            msg_set_content(bot_message, "");
             bool voided = false;
             for (size_t i = 1; i < r; i++) {
                 if (voided) { // break if there was an issue with reading this payload
