@@ -15,8 +15,10 @@
 #include "jsmn.h"
 #include "nvs_flash.h"
 
-#include "discord.c"
+#include "bot_cmd_manager.c"
+#include "discord.h"
 #include "heart.c"
+#include "helper.h"
 
 #define JSMN_TOKEN_LENGTH 256
 #define BOT_TOKEN CONFIG_BOT_TOKEN
@@ -31,8 +33,7 @@
 #endif
 #endif
 
-// TODO: implement case sensitive text option
-// TODO: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
+// IMPROVE: reconnect bot every now and then to reset sequence number to avoid huge seq numbers
 
 typedef void (*BOT_payload_handler)(char *); // function that will send the bot payloads
 
@@ -68,15 +69,6 @@ static int BOT_lastOP = -1;
 // static char *BOT_activeGuild = "null";
 // static bool BOT_ready = false;
 static bool BOT_ACK = false;
-
-typedef struct BOT_basic_message {
-    char *channel_id;
-    char *guild_id;
-    char *author;
-    char *author_mention;
-    char *author_id;
-    char *content;
-} BOT_basic_message_t;
 
 #define BOT_send_payload(data, len, ...)               \
     {                                                  \
@@ -228,21 +220,6 @@ static inline int jsmn_get_total_size(jsmntok_t *token) {
     return res;
 }
 
-static bool string_match(char *const string, char *const stringMaster) {
-    int i;
-    bool val = true;
-    for (i = 0; i < strlen(stringMaster); i++) {
-#ifdef BOT_CASE_SENSITIVE
-        if (*(string + i) != *(BOT_PREFIX + i)) {
-#else
-        if (tolower(*(_String + i)) != tolower(*(BOT_PREFIX + i))) {
-#endif
-            val = false;
-            break;
-        }
-    }
-}
-
 static void BOT_payload_task(void *pvParameters) {
     for (;;) {
         ESP_LOGI(BOT_TAG, "Waiting for queue");                    // IMPROVE: Only use one queue for BOT task
@@ -267,8 +244,8 @@ static void BOT_payload_task(void *pvParameters) {
                 ESP_LOGE(JSM_TAG, "Object expected in JSON");
             }
         } else {
-            BOT_basic_message_t *bot_message = calloc(1, sizeof(struct BOT_basic_message)); // initialize new payload
-            bot_message->content = NULL;
+            BOT_basic_message_t bot_message;
+            msg_set_content(bot_message, NULL);
             bool voided = false;
             for (size_t i = 1; i < r; i++) {
                 if (voided) { // break if there was an issue with reading this payload
@@ -335,7 +312,7 @@ static void BOT_payload_task(void *pvParameters) {
                                         int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
                                         char *data = malloc(len);
                                         snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
-                                        bot_message->author = strdup(data);
+                                        msg_set_author(bot_message, data);
                                         free(data);
                                         _k += 2;
                                     } else if (json_equal(data_ptr, &tkns[_k], "id")) {
@@ -343,13 +320,13 @@ static void BOT_payload_task(void *pvParameters) {
                                         int len = (tkns[_k + 1].end - tkns[_k + 1].start) + 1;
                                         char *data = malloc(len);
                                         snprintf(data, len, (char *)(data_ptr + tkns[_k + 1].start));
-                                        bot_message->author_id = strdup(data);
+                                        msg_set_author_id(bot_message, data);
                                         free(data);
 
                                         len = len + strlen(BOT_MENTION_PATTERN);
                                         data = malloc(len);
-                                        snprintf(data, len, BOT_MENTION_PATTERN, bot_message->author_id);
-                                        bot_message->author_mention = strdup(data);
+                                        snprintf(data, len, BOT_MENTION_PATTERN, bot_message.author_id);
+                                        msg_set_author_mention(bot_message, data);
                                         free(data);
                                         _k += 2;
                                     } else {
@@ -362,7 +339,7 @@ static void BOT_payload_task(void *pvParameters) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
                                 char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
-                                bot_message->channel_id = strdup(data);
+                                msg_set_channel_id(bot_message, data);
                                 free(data);
                                 k += jsmn_get_total_size(&tkns[k]);
                             } else if (json_equal(data_ptr, &tkns[k], "content")) { // Only accept prefixed content
@@ -375,7 +352,7 @@ static void BOT_payload_task(void *pvParameters) {
                                     if (string_match(data, "!help")) {
                                         ESP_LOGI(BOT_TAG, "!help detected, queueing basic help string");
                                         basic_help = true;
-                                        bot_message->content = strdup(data);
+                                        msg_set_content(bot_message, data);
                                         free(data);
                                         k += 2;
                                         continue;
@@ -389,7 +366,7 @@ static void BOT_payload_task(void *pvParameters) {
                                     free(data);
                                     continue;
                                 }
-                                bot_message->content = strdup(data + BOT_PREFIX_LENGTH); // Allocate space while ignoring the prefix
+                                msg_set_content(bot_message, data + BOT_PREFIX_LENGTH); // ignore the prefix
                                 free(data);
                                 k += jsmn_get_total_size(&tkns[k]);
                             } else if (json_equal(data_ptr, &tkns[k], "guild_id")) {
@@ -397,7 +374,7 @@ static void BOT_payload_task(void *pvParameters) {
                                 int len = (tkns[k + 1].end - tkns[k + 1].start) + 1;
                                 char *data = malloc(len);
                                 snprintf(data, len, (char *)(data_ptr + tkns[k + 1].start));
-                                bot_message->guild_id = strdup(data);
+                                msg_set_guild_id(bot_message, data);
                                 free(data);
                                 k += jsmn_get_total_size(&tkns[k]);
                             } else if (json_equal(data_ptr, &tkns[k], "type")) {
@@ -464,27 +441,27 @@ static void BOT_payload_task(void *pvParameters) {
                 }
             }
             if (BOT_event == MESSAGE_CREATE) {
-                if (voided || bot_message->content == NULL) {
+                if (voided || bot_message.content == NULL) {
                     ESP_LOGW(BOT_TAG, "Last message was voided or empty");
-                    free(bot_message);
+                    destroy_basic_message(&bot_message);
                 } else {
-                    ESP_LOGI(BOT_TAG, "Message: %s", bot_message->content);
-                    ESP_LOGI(BOT_TAG, "Author: %s", bot_message->author);
-                    ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message->guild_id);
-                    ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message->channel_id);
+                    ESP_LOGI(BOT_TAG, "Message: %s", bot_message.content);
+                    ESP_LOGI(BOT_TAG, "Author: %s", bot_message.author);
+                    ESP_LOGI(BOT_TAG, "Guild ID: %s", bot_message.guild_id);
+                    ESP_LOGI(BOT_TAG, "Channel ID: %s", bot_message.channel_id);
 #ifdef CONFIG_BOT_BASIC_HELP
                     if (basic_help) {
-                        discord_send_text_message(BOT_BASIC_HELP, bot_message->channel_id);
-                        free(bot_message);
+                        discord_send_text_message(BOT_BASIC_HELP, bot_message.channel_id);
+                        destroy_basic_message(&bot_message);
                     } else {
 #endif
-                        // bot_message must be freed from this point
+                        BOT_queue_command_message(&bot_message);
 #ifdef CONFIG_BOT_BASIC_HELP
                     }
 #endif
                 }
             } else {
-                free(bot_message);
+                destroy_basic_message(&bot_message);
             }
         }
     }
@@ -503,6 +480,9 @@ extern esp_err_t BOT_init(BOT_payload_handler payload_handle, QueueHandle_t mess
 
     ESP_LOGI(BOT_TAG, "Initalizing discord rest api");
     ESP_ERROR_CHECK(discord_init(BOT_TOKEN));
+
+    ESP_LOGI(BOT_TAG, "Initalizing BOT command manager");
+    ESP_ERROR_CHECK(BOT_init_cmd());
 
     ESP_LOGI(BOT_TAG, "Starting BOT task");
     if (xTaskCreate(BOT_payload_task, "BOT task", 8192, NULL, 8, NULL) != pdPASS) {

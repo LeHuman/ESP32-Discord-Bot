@@ -1,4 +1,3 @@
-#ifdef CONFIG_BLINK_ENABLE
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -45,4 +44,3 @@ extern esp_err_t start_blink_task() {
         return ESP_FAIL;
     }
 }
-#endif

@@ -1,18 +1,12 @@
+#include "discord.h"
+#include "http_post.c"
+#include "jsonBuilder.c"
+
 #define REST_PATH CONFIG_REST_PATH_PATTERN
 #define REST_AUTH_PREFIX CONFIG_REST_AUTH_PREFIX
 #define REST_COLOR CONFIG_BOT_COLOR
 
-#include <stdlib.h>
-
-#include "esp_log.h"
-#include "http_post.c"
-#include "jsonBuilder.c"
-
-#define discord_send_text_message(content, channel_id) discord_send_message(content, NULL, NULL, NULL, NULL, NULL, NULL, channel_id)
-#define discord_send_basic_embed(title, description, channel_id) discord_send_message(NULL, title, description, NULL, NULL, NULL, NULL, channel_id)
-
 static const char DISC_TAG[] = "Discord";
-// static const char MSG_STR[] = "{\"content\":\"%s\",\"tts\":false,\"embed\":{\"title\":\"%s\",\"description\":\"%s\"}}";
 
 static void discord_rest_post(const char *json_content, const char *channel_id) {
     ESP_LOGI(DISC_TAG, "POSTing Message");
