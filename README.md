@@ -1,19 +1,17 @@
-# Websocket Sample application
+# ESP32 Discord Bot - WIP
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
-This example will shows how to set up and communicate over a websocket.
+## How to Use
 
-## How to Use Example
+Use the VSCode Espressif IDF extension for easier config and programming
 
 ### Hardware Required
 
-This example can be executed on any ESP32 board, the only required interface is WiFi and connection to internet or a local server.
+This setup was built around a ESP DEVKITV1 which uses the ESP-WROOM-32
 
 ### Configure the project
 
 * Open the project configuration menu (`idf.py menuconfig`)
-* Configure Wi-Fi or Ethernet under "Example Connection Configuration" menu. See "Establishing Wi-Fi or Ethernet Connection" section in [examples/protocols/README.md](../../README.md) for more details.
-* Configure the websocket endpoint URI under "Example Configuration", if "WEBSOCKET_URI_FROM_STDIN" is selected then the example application will connect to the URI it reads from stdin (used for testing)
+* Configure various Discord bot details under "ESP config"
 
 ### Build and Flash
 
@@ -41,18 +39,4 @@ I (5012) WEBSOCKET: WEBSOCKET_EVENT_CONNECTED
 I (5492) WEBSOCKET: Sending hello 0000
 I (6052) WEBSOCKET: WEBSOCKET_EVENT_DATA
 W (6052) WEBSOCKET: Received=hello 0000
-
-I (6492) WEBSOCKET: Sending hello 0001
-I (7052) WEBSOCKET: WEBSOCKET_EVENT_DATA
-W (7052) WEBSOCKET: Received=hello 0001
-
-I (7492) WEBSOCKET: Sending hello 0002
-I (8082) WEBSOCKET: WEBSOCKET_EVENT_DATA
-W (8082) WEBSOCKET: Received=hello 0002
-
-I (8492) WEBSOCKET: Sending hello 0003
-I (9152) WEBSOCKET: WEBSOCKET_EVENT_DATA
-W (9162) WEBSOCKET: Received=hello 0003
-
 ```
-
