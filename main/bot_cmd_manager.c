@@ -10,6 +10,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include <unordered_map>
 
 #include "bot_commands.c"
 
@@ -54,6 +55,10 @@ static void BOT_command_queue_task(void *pvParameters) {
         xQueuePeek(BOT_command_queue, &user_message, portMAX_DELAY);
         ESP_LOGI(CMD_TAG, "Distilling command");
         xQueueReceive(BOT_command_queue, &user_message, portMAX_DELAY); // Wait for new message in queue
+
+        // std::unordered_map<string, int> map;
+
+        // TODO: match and call handler right here
 
         destroy_basic_message(BOT_command_queue);
     }
