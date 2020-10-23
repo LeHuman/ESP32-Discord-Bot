@@ -1,5 +1,7 @@
 # ESP32 Discord Bot - WIP
 
+A very basic setup for an ESP32 that allows it to be used as a discord bot
+
 ## How to Use
 
 Use the VSCode Espressif IDF extension for easier config and programming
