@@ -10,7 +10,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include <unordered_map>
+// #include <unordered_map>
 
 #include "bot_commands.c"
 
